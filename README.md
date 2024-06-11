@@ -94,6 +94,8 @@ clear && cmake --build . && ./bin/map_storage_exec
 ## Citation
 
 if you use this project in your work please citer as follows:
+
+```
 @misc{AlternativePointStorage2024,
   author       = {Oreoluwa Seweje},
   title        = {An Alternative PointStorage},
@@ -101,3 +103,4 @@ if you use this project in your work please citer as follows:
   url          = {<https://github.com/Oreoluwa-Se/map_storage}>,
   note         = {A scalable approach to storing 3D point clouds and a novel method for point-cloud downsampling},
 }
+```
