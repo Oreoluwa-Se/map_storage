@@ -85,17 +85,16 @@ void Deleter<T>::range_delete(BlockPtr<T> &c_block, const Eigen::Matrix<T, 3, 1>
     // here we collapse the subtree
     if (del_status == DeleteStatus::Collapse)
     {
-        // detach parent
+        // detach from parent
         if (auto sp = c_block->get_aux_connection(Connection::Parent))
         {
-            if (auto left_child = sp->get_child(Connection::Left))
-            {
-                if (left_child->node_rep == c_block->node_rep)
-                    sp->set_child(nullptr, Connection::Left);
-            }
+            auto left_child = sp->get_child(Connection::Left);
+            if (left_child && left_child->node_rep == c_block->node_rep)
+                sp->set_child(nullptr, Connection::Left);
             else
                 sp->set_child(nullptr, Connection::Right);
         }
+
         // handling the node connection later
         std::weak_ptr<Deleter<T>> workptr = this->shared_from_this();
         config->wp->enqueue_task(
@@ -108,6 +107,7 @@ void Deleter<T>::range_delete(BlockPtr<T> &c_block, const Eigen::Matrix<T, 3, 1>
             PriorityRank::Medium);
 
         // update subtree information
+        c_block->set_status(NodeStatus::Deleted);
         c_block->update_subtree_info();
         return;
     }
@@ -117,10 +117,6 @@ void Deleter<T>::range_delete(BlockPtr<T> &c_block, const Eigen::Matrix<T, 3, 1>
         c_block->oct->outside_range_delete(center, range, del_type);
     else if (cond == DeleteCondition::Inside)
         c_block->oct->within_range_delete(center, range, del_type);
-
-    // mark current block as deleted if the criteria calls for that
-    if (c_block->oct->bbox->get_size() == 0)
-        c_block->set_status(NodeStatus::Deleted);
 
     // moving left or right or both
     BlockPtr<T> left_blk, right_blk;
@@ -140,6 +136,10 @@ void Deleter<T>::range_delete(BlockPtr<T> &c_block, const Eigen::Matrix<T, 3, 1>
         if (right_blk)
             range_delete(right_blk, center, range, cond, del_type);
     }
+
+    // mark current block as deleted if the criteria calls for that
+    if (c_block->oct->bbox->get_size() == 0)
+        c_block->set_status(NodeStatus::Deleted);
 
     // update subtree information
     c_block->update_subtree_info();

@@ -11,7 +11,7 @@ include_directories(include)
 add_subdirectory(thirdparty)
 
 # Source files for the library
-file(GLOB_RECURSE LIB_SOURCES "src/helpers/*.cpp")
+file(GLOB_RECURSE LIB_SOURCES "src/helpers/*.cpp" "src/run.cpp")
 file(GLOB_RECURSE LIB_HEADERS "include/*.hpp" "include/*.h")
 
 # Create library
@@ -45,7 +45,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBRARIES} )
 
 # executable setup
-add_executable(${PROJECT_NAME}_exec src/run.cpp) 
+add_executable(${PROJECT_NAME}_exec src/main.cpp) 
 target_link_libraries(${PROJECT_NAME}_exec PRIVATE ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME}_exec PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(${PROJECT_NAME}_exec PRIVATE ${COMMON_LIBRARIES})
@@ -53,9 +53,7 @@ target_link_libraries(${PROJECT_NAME}_exec PRIVATE ${COMMON_LIBRARIES})
 # Debug and release configuration
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     message("Debug mode")
-    # target_compile_options(${PROJECT_NAME} PRIVATE -g -O0 -Wall -Wextra -Werror)
     target_compile_options(${PROJECT_NAME} PRIVATE -g -O0)
-    # target_compile_options(${PROJECT_NAME}_exec PRIVATE -g -O0 -Wall -Wextra -Werror)
     target_compile_options(${PROJECT_NAME}_exec PRIVATE -g -O0)
 elseif(CMAKE_BUILD_TYPE MATCHES Release)
     message("Release mode")

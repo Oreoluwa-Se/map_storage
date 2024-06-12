@@ -18,8 +18,6 @@ struct Deleter : public std::enable_shared_from_this<Deleter<T>>
 
     void delete_outside_points(const Eigen::Matrix<T, 3, 1> &ptd, T range, DeleteType del_type = DeleteType::Spherical);
 
-    void delete_cont(BlockPtr<T> &c_block, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type);
-
     void range_delete(BlockPtr<T> &c_block, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type);
 
 private:

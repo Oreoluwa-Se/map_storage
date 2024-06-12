@@ -206,6 +206,7 @@ void Block<T>::update_subtree_info_helper(typename Block<T>::Ptr &blk)
 
         boost::unique_lock<boost::shared_mutex> lock(blk->mutex);
         blk->num_deleted = size_t(l_status == NodeStatus::Deleted);
+        blk->tree_size = size_t(l_status != NodeStatus::Deleted);
         blk->require_update = false;
         return;
     }
