@@ -6,15 +6,15 @@
 
 template <typename T>
 Point3d<T>::Point3d()
-    : point(Eigen::Matrix<T, 3, 1>::Zero()), intensity(0), timestamp(0.0), dt(0.0) {}
+    : point(Eigen::Matrix<T, 3, 1>::Zero()), intensity(0), timestamp(0.0), dt(0.0), octant_key(Point3d<T>::sign_cardinality(point)) {}
 
 template <typename T>
 Point3d<T>::Point3d(const Eigen::Matrix<T, 3, 1> &p, std::uint8_t intensity, T timestamp, T dt)
-    : point(p), intensity(intensity), timestamp(timestamp), dt(dt) {}
+    : point(p), intensity(intensity), timestamp(timestamp), dt(dt), octant_key(Point3d<T>::sign_cardinality(p)) {}
 
 template <typename T>
 Point3d<T>::Point3d(T x, T y, T z, std::uint8_t intensity, T timestamp, T dt)
-    : point(Eigen::Matrix<T, 3, 1>(x, y, z)), intensity(intensity), timestamp(timestamp), dt(dt) {}
+    : point(Eigen::Matrix<T, 3, 1>(x, y, z)), intensity(intensity), timestamp(timestamp), dt(dt), octant_key(Point3d<T>::sign_cardinality(point)) {}
 
 template <typename T>
 Point3d<T>::Point3d(const Point3d &other)

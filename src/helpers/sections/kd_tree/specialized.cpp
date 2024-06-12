@@ -116,7 +116,9 @@ template struct DownsampleData<double>;
 template struct DownsampleData<float>;
 
 template <typename T>
-Point3dPtrVectCC<T> Downsample<T>::regular(Point3dPtrVectCC<T> &vector, T dwnsample_ratio)
+template <typename PointContainer>
+Point3dPtrVectCC<T> Downsample<T>::regular(PointContainer &vector, T dwnsample_ratio)
+
 {
     std::array<DownsampleData<T>, 8> to_flushs;
 
@@ -155,97 +157,6 @@ Point3dPtrVectCC<T> Downsample<T>::regular(Point3dPtrVectCC<T> &vector, T dwnsam
         });
 
     return collection;
-}
-
-template <typename T>
-Point3dPtrVectCC<T> Downsample<T>::regular(Point3dPtrVect<T> &vector, T dwnsample_ratio)
-{
-    std::array<DownsampleData<T>, 8> to_flushs;
-
-    // group into cardinality and variance
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, vector.size()),
-        [&](const tbb::blocked_range<size_t> &range)
-        {
-            for (size_t i = range.begin(); i != range.end(); ++i)
-            {
-                int signc = Point3d<T>::sign_cardinality(vector[i]->point);
-                to_flushs[signc].add_point(vector[i]);
-            }
-        });
-
-    // get spread and count for all voxels
-    Eigen::Matrix<T, 1, Eigen::Dynamic> variances, counts;
-    Downsample<T>::collect_var_counts(variances, counts, to_flushs);
-
-    // scale by maximum[we use information about spread and density]
-    T d_size = dwnsample_ratio * static_cast<T>(vector.size());
-    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = DownsampleData<T>::weight_generator(variances, counts, d_size);
-    Point3dPtrVectCC<T> collection;
-    boost::shared_mutex mtx;
-
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, to_flushs.size()),
-        [&](const tbb::blocked_range<size_t> &range)
-        {
-            for (size_t i = range.begin(); i != range.end(); ++i)
-            {
-                Point3dPtrVectCC<T> res = to_flushs[i].reduced(std::max(T(1), weight(i)));
-                for (auto &p : res)
-                    collection.push_back(p);
-            }
-        });
-
-    return collection;
-}
-
-template <typename T>
-std::map<T, Point3dPtrVectCC<T>> Downsample<T>::clustered_run(Point3dPtrVectCC<T> &vector, T dwnsample_ratio)
-{
-    std::array<DownsampleData<T>, 8> to_flushs;
-    tbb::concurrent_unordered_set<T> ts;
-    std::map<T, Point3dPtrVectCC<T>> output;
-    boost::shared_mutex output_mtx;
-
-    // group into cardinality and variance
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, vector.size()),
-        [&](const tbb::blocked_range<size_t> &range)
-        {
-            for (size_t i = range.begin(); i != range.end(); ++i)
-            {
-                int signc = Point3d<T>::sign_cardinality(vector[i]->point);
-                to_flushs[signc].add_point(vector[i]);
-                if (ts.insert(vector[i]->timestamp).second)
-                {
-                    boost::unique_lock<boost::shared_mutex> lock(output_mtx);
-                    output[vector[i]->timestamp] = Point3dPtrVectCC<T>();
-                }
-            }
-        });
-
-    // get spread and count for all voxels
-    Eigen::Matrix<T, 1, Eigen::Dynamic> variances, counts;
-    Downsample<T>::collect_var_counts(variances, counts, to_flushs);
-
-    // scale by maximum [we use information about spread and density]
-    T d_size = dwnsample_ratio * static_cast<T>(vector.size());
-    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = DownsampleData<T>::weight_generator(variances, counts, d_size);
-
-    std::vector<Point3dPtrVectCC<T>> collection(ts.size());
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, to_flushs.size()),
-        [&](const tbb::blocked_range<size_t> &range)
-        {
-            for (size_t i = range.begin(); i != range.end(); ++i)
-            {
-                auto res = to_flushs[i].reduced(std::max(T(1.0), weight(i)));
-                for (auto &point : res)
-                    output[point->timestamp].push_back(point);
-            }
-        });
-
-    return output;
 }
 
 template <typename T>
@@ -268,7 +179,8 @@ void Downsample<T>::collect_var_counts(Eigen::Matrix<T, 1, Eigen::Dynamic> &var,
 }
 
 template <typename T>
-std::map<T, Point3dPtrVectCC<T>> Downsample<T>::clustered_run(Point3dPtrVect<T> &vector, T dwnsample_ratio)
+template <typename PointContainer>
+std::map<T, Point3dPtrVectCC<T>> Downsample<T>::clustered_run(PointContainer &vector, T dwnsample_ratio)
 {
     std::array<DownsampleData<T>, 8> to_flushs;
     tbb::concurrent_unordered_set<T> ts;
@@ -317,3 +229,15 @@ std::map<T, Point3dPtrVectCC<T>> Downsample<T>::clustered_run(Point3dPtrVect<T> 
 
 template struct Downsample<double>;
 template struct Downsample<float>;
+
+template Point3dPtrVectCC<double> Downsample<double>::regular<Point3dPtrVectCC<double>>(Point3dPtrVectCC<double> &, double);
+template Point3dPtrVectCC<float> Downsample<float>::regular<Point3dPtrVectCC<float>>(Point3dPtrVectCC<float> &, float);
+
+template Point3dPtrVectCC<double> Downsample<double>::regular<Point3dPtrVect<double>>(Point3dPtrVect<double> &, double);
+template Point3dPtrVectCC<float> Downsample<float>::regular<Point3dPtrVect<float>>(Point3dPtrVect<float> &, float);
+
+template std::map<double, Point3dPtrVectCC<double>> Downsample<double>::clustered_run<Point3dPtrVectCC<double>>(Point3dPtrVectCC<double> &, double);
+template std::map<float, Point3dPtrVectCC<float>> Downsample<float>::clustered_run<Point3dPtrVectCC<float>>(Point3dPtrVectCC<float> &, float);
+
+template std::map<double, Point3dPtrVectCC<double>> Downsample<double>::clustered_run<Point3dPtrVect<double>>(Point3dPtrVect<double> &, double);
+template std::map<float, Point3dPtrVectCC<float>> Downsample<float>::clustered_run<Point3dPtrVect<float>>(Point3dPtrVect<float> &, float);

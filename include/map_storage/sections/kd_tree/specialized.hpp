@@ -45,15 +45,12 @@ template <typename T>
 struct Downsample
 {
     // Using variance based approach means we only downsample when possible. Avoids loosing key information
-    static Point3dPtrVectCC<T> regular(Point3dPtrVectCC<T> &vector, T dwnsample_ratio = 0.5);
+    template <typename PointContainer>
+    static Point3dPtrVectCC<T> regular(PointContainer &vector, T dwnsample_ratio = 0.5);
 
-    static Point3dPtrVectCC<T> regular(Point3dPtrVect<T> &vector, T dwnsample_ratio = 0.5);
+    template <typename PointContainer>
+    static std::map<T, Point3dPtrVectCC<T>> clustered_run(PointContainer &vector, T dwnsample_ratio = 0.5);
 
     static void collect_var_counts(Eigen::Matrix<T, 1, Eigen::Dynamic> &var, Eigen::Matrix<T, 1, Eigen::Dynamic> &counts, std::array<DownsampleData<T>, 8> &to_flush);
-
-    static std::map<T, Point3dPtrVectCC<T>> clustered_run(Point3dPtrVectCC<T> &vector, T dwnsample_ratio = 0.5);
-
-    static std::map<T, Point3dPtrVectCC<T>> clustered_run(Point3dPtrVect<T> &vector, T dwnsample_ratio = 0.5);
-    // works on a vector of pointers
 };
 #endif

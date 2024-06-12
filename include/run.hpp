@@ -9,14 +9,40 @@
 #include "map_storage/utils/bbox.hpp"
 #include <Eigen/Dense>
 #include <random>
+#include <string>
+
+template <typename T>
+struct TestParams
+{
+    // Build parameters
+    size_t max_points_in_vox = 30; // maximum number of points stored in each level for an octant
+    T imbal_factor = 0.7;          // size discrepancy between left and right tree to trigger rebalancing
+    T del_nodes_factor = 0.5;      // maximum ratio between valid and invalid nodes before rebalancing
+    bool track_stats = false;      // To track the mean and covariance for each voxel - mean is used during search and covariance can be used as a validity check
+    size_t init_map_size = 1;      // minimum number of points to build initial map
+    T voxel_size = 1.0;            // total voxel_size
+
+    // Test Params
+    T points_gen_range = 5.0; // cubiod
+    T delete_radius = 1.0;
+    T search_radius = 5.0;
+    size_t num_nearest = 5;
+    size_t build_size = 1000;
+    size_t num_incremental_insert = 200;
+    bool verbose = false;
+    bool delete_within = true;
+    size_t iterations_faster_lio_test = 100;
+    T downsample_ratio = 0.5;
+};
 
 // Creating the functions
 template <typename T>
 struct RunFunctions
 {
-    RunFunctions(T voxel_size = 1.0);
 
-    Point3dPtrVect<T> create_random_points(size_t num_points, T range, bool verbose = false);
+    explicit RunFunctions(bool use_config = false);
+
+    Point3dPtrVect<T> create_random_points(size_t num_points, T range);
 
     void single_node_update_run(OctreeNodePtr<T> &node, const Point3dPtrVect<T> &points);
 
@@ -24,33 +50,32 @@ struct RunFunctions
 
     void octree_ptr_run(OctreePtr<T> &node, const Point3dPtrVect<T> &points);
 
-    void point_storage_run(PointStoragePtr<T> &node, Point3dPtrVect<T> &points, bool verbose = false);
+    void point_storage_run(PointStoragePtr<T> &node, Point3dPtrVect<T> &points);
 
-    void testing_insert_schemes(size_t N, T range, bool track_cov);
+    void testing_insert_schemes();
 
-    OctreeNodePtr<T> create_and_insert_node(size_t N, T min_range, T range, bool track_cov);
+    OctreeNodePtr<T> create_and_insert_node();
 
-    OctreeNodePtr<T> create_and_insert_node(size_t N, T range, bool track_cov);
+    OctreePtr<T> create_and_insert_tree();
 
-    OctreePtr<T> create_and_insert_tree(size_t N, T range, bool track_cov);
+    void testing_octree_delete();
 
-    void testing_delete_scheme(size_t N, T range, bool track_cov, bool outside);
+    void testing_search();
 
-    void testing_search(size_t N, T range, bool track_cov, size_t k, bool verbose = false);
+    PointStoragePtr<T> test_build_incremental_insert_point_storage();
 
-    PointStoragePtr<T> test_build_incremental_insert_point_storage(size_t N, T range, size_t num_incremental_insert = 200, bool verbose = false);
+    void testing_downsample_scheme();
 
-    void testing_downsample_scheme(size_t N, T range, T dwnsample_ratio = 0.5);
+    void faster_lio_trial(size_t build_num);
 
-    void faster_lio_trial(size_t N, T range, size_t num_iter = 20, size_t num_insert = 200, size_t num_search = 5);
+    void testing_combined_delete();
 
-    void testing_combined_delete(size_t N, T range, T delete_range = 1.0, bool verbose = false);
-
-    void incremental_info(T range, size_t test_run = 100);
+    void incremental_info();
 
 private:
     T voxel_size;
     std::mt19937 gen;
+    TestParams<T> tp;
 };
 
 #endif

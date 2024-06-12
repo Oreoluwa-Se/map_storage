@@ -21,36 +21,36 @@ void Octree<T>::clear()
 template <typename T>
 void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
 {
-    auto sign_c = Point3d<T>::sign_cardinality(point->point);
+
     { // if inserting just add it to list of nodes to insert
-        boost::shared_lock<boost::shared_mutex> lock_s(mutexes[sign_c]);
-        if (inserting_t[sign_c])
+        boost::shared_lock<boost::shared_mutex> lock_s(mutexes[point->octant_key]);
+        if (inserting_t[point->octant_key])
         {
-            to_flushs[sign_c].push_back(point);
+            to_flushs[point->octant_key].push_back(point);
             return;
         }
     }
 
-    boost::unique_lock<boost::shared_mutex> lock(mutexes[sign_c]);
-    if (inserting_t[sign_c])
+    boost::unique_lock<boost::shared_mutex> lock(mutexes[point->octant_key]);
+    if (inserting_t[point->octant_key])
     {
-        to_flushs[sign_c].push_back(point);
+        to_flushs[point->octant_key].push_back(point);
         return;
     }
 
-    if (!roots[sign_c]) // create coordinate
-        roots[sign_c] = std::make_shared<OctreeNode<T>>(max_points, false);
+    if (!roots[point->octant_key]) // create coordinate
+        roots[point->octant_key] = std::make_shared<OctreeNode<T>>(max_points, false);
 
-    inserting_t[sign_c] = true;
+    inserting_t[point->octant_key] = true;
     lock.unlock();
 
     // insert
     bbox->update(point->point);
-    roots[sign_c]->insert_point(point);
+    roots[point->octant_key]->insert_point(point);
 
     // perform batch updates
     lock.lock();
-    inserting_t[sign_c] = false;
+    inserting_t[point->octant_key] = false;
 }
 
 template <typename T>

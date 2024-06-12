@@ -73,7 +73,7 @@ public:                                                            // attributes
     Eigen::Vector3i vox;                                           // voxel representation
     std::uint8_t intensity = 0;                                    // intensity value
     T timestamp = T(0.0), dt = T(0.0);                             // timestamp and dt value
-    size_t octant_key = 0;                                         // used for point registration
+    int octant_key = 0;                                            // used for point registration
     bool point_valid = false;
     int frame_id = -1;
 };

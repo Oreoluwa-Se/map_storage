@@ -22,6 +22,7 @@ find_package(Eigen3 REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Sophus REQUIRED)
 find_package(Boost REQUIRED COMPONENTS thread system)
+find_package(yaml-cpp REQUIRED)
 
 # Common includes and links
 set(COMMON_INCLUDES
@@ -38,6 +39,7 @@ set(COMMON_LIBRARIES
     Boost::system
     TBB::tbb
     pthread
+    yaml-cpp
     )
 
 # Link common includes and libraries to the library

@@ -82,14 +82,6 @@ clear && cmake --build . && ./bin/map_storage_exec
 
 **Note:** Extensive examples on how things are instantiated are in the `src/run.cpp` file. Also, the `faster_lio_trial` function shows the ideal use case.
 
-## TODO
-
-- **Implement a YAML configuration file for easy adjustments**
-  - Create a YAML configuration file to simplify the process of making adjustments to the project settings and parameters.
-
-- **Handle type differences using templates**
-  - Utilize C++ templates to manage and handle type differences effectively throughout the codebase.
-
 ## Citation
 
 if you use this project in your work please citer as follows:

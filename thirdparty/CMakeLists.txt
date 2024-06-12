@@ -36,3 +36,9 @@ if (NOT TARGET Sophus::Sophus)
     install_dep()
 endif()
 
+# ------------------- Eigen ------------------- 
+find_package(yaml-cpp REQUIRED)
+if (NOT yaml-cpp_FOUND)
+    message(STATUS "yaml-cpp not found. Downloading and installing locally.")
+    install_dep()
+endif()  

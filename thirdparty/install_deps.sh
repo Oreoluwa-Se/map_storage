@@ -38,6 +38,18 @@ if ! cmake --find-package -DCOMPILER_ID=GNU -DLANGUAGE=CXX -DMODE=EXIST -DNAME=T
     rm -rf oneTBB
 fi
 
+# Check if yaml-cpp is installed
+if ! cmake --find-package -DCOMPILER_ID=GNU -DLANGUAGE=CXX -DMODE=EXIST -DNAME=yaml-cpp; then
+    echo "Installing yaml-cpp..."
+    git clone https://github.com/jbeder/yaml-cpp.git
+    cd yaml-cpp
+    mkdir build && cd build
+    cmake ..
+    sudo make install
+    cd ../..
+    rm -rf yaml-cpp
+fi
+
 # Install Sophus
 if ! cmake --find-package -DCOMPILER_ID=GNU -DLANGUAGE=CXX -DMODE=EXIST -DNAME=Sophus; then
     echo "Installing Sophus..."
