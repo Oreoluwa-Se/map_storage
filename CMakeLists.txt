@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(map_storage)
+project(map_storage VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,6 +45,10 @@ set(COMMON_LIBRARIES
 # Link common includes and libraries to the library
 target_include_directories(${PROJECT_NAME} PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBRARIES} )
+
+# Include export and install logic
+include(cmake/install.cmake)
+include(cmake/export.cmake)
 
 # executable setup
 add_executable(${PROJECT_NAME}_exec src/main.cpp) 
