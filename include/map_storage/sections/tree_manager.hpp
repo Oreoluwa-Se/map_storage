@@ -44,7 +44,7 @@ public:
     void delete_outside_points(const Eigen::Matrix<T, 3, 1> &ptd, T range, DeleteType del_type = DeleteType::Spherical);
 
     // point retrival
-    Point3dWPtrVec<T> get_points();
+    Point3dWPtrVecCC<T> get_points();
 
 private:
     void load_rebalance(BlockPtrVecCC<T> &scapegoats);

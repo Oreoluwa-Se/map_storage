@@ -36,13 +36,13 @@ bool PointStorage<T>::build(Point3dPtrVect<T> &points)
 }
 
 template <typename T>
-Point3dWPtrVec<T> PointStorage<T>::get_points()
+Point3dWPtrVecCC<T> PointStorage<T>::get_points()
 {
     size_t total_size;
     VisualizationPointStorage<T> oct_points;
     std::tie(total_size, oct_points) = config->map_points();
 
-    Point3dWPtrVec<T> points;
+    Point3dWPtrVecCC<T> points;
     points.reserve(total_size);
 
     for (auto &point_sector : oct_points)

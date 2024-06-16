@@ -422,7 +422,7 @@ void RunFunctions<T>::test_point_retrival()
     point_storage_run(node, points);
 
     auto start = std::chrono::high_resolution_clock::now();
-    Point3dWPtrVec<T> pts = node->get_points();
+    Point3dWPtrVecCC<T> pts = node->get_points();
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<T> duration = end - start;
 
