@@ -83,7 +83,7 @@ public:
 
     using SearchHeap = std::priority_queue<SearchPair, std::vector<SearchPair>, ComparePairs>;
 
-    Block(const Eigen::Vector3i &value = Eigen::Vector3i::Zero(), size_t max_points = 30, T voxel_size = 1.0, bool track_stats = false);
+    Block(const Eigen::Vector3i &value = Eigen::Vector3i::Zero(), int max_vox_size = -1, size_t max_points_oct_layer = 30, T voxel_size = 1.0, bool track_stats = false);
 
     void set_child(const Ptr &vox, Connection child, int axis = -1);
 
@@ -106,6 +106,8 @@ public:
     bool is_leaf(Ptr &left_child, Ptr &right_child);
 
     bool is_leaf();
+
+    bool point_insert_clause();
 
     std::string format_block_info(bool is_left, size_t depth);
 
@@ -169,6 +171,7 @@ private:
 
     Eigen::Matrix<T, 3, 1> v_min, v_max; // voxel boundaries
     T voxel_size;
+    int max_vox_size;
     size_t tree_size = 1, num_deleted = 0; // number of voxels within subtree from node
     int axis = -1;
     bool require_update = true;

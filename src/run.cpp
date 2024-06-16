@@ -10,6 +10,7 @@ RunFunctions<T>::RunFunctions(bool use_config)
     if (use_config)
     {
         set_param(tp.max_points_in_vox, build_params["max_points_in_vox"]);
+        set_param(tp.max_points_in_oct_layer, build_params["max_points_in_oct_layer"]);
         set_param(tp.imbal_factor, build_params["imbal_factor"]);
         set_param(tp.del_nodes_factor, build_params["del_nodes_factor"]);
         set_param(tp.track_stats, build_params["track_stats"]);
@@ -287,7 +288,7 @@ PointStoragePtr<T> RunFunctions<T>::test_build_incremental_insert_point_storage(
     std::cout << "\nTesting insert KD-Variant Incrementally" << std::endl;
     size_t tot_points = tp.build_size;
     PointStoragePtr<T> node = std::make_shared<PointStorage<T>>(
-        tp.max_points_in_vox, tp.imbal_factor, tp.del_nodes_factor,
+        tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
         tp.track_stats, tp.init_map_size, tp.voxel_size);
 
     auto points = create_random_points(tp.build_size, tp.points_gen_range);
@@ -364,7 +365,7 @@ void RunFunctions<T>::faster_lio_trial(size_t N)
     for (size_t iter = 0; iter < tp.iterations_faster_lio_test; ++iter)
     {
         PointStoragePtr<T> node = std::make_shared<PointStorage<T>>(
-            tp.max_points_in_vox, tp.imbal_factor, tp.del_nodes_factor,
+            tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
             tp.track_stats, tp.init_map_size, tp.voxel_size);
 
         auto points = create_random_points(N, tp.points_gen_range);
@@ -409,10 +410,30 @@ void RunFunctions<T>::faster_lio_trial(size_t N)
 }
 
 template <typename T>
+void RunFunctions<T>::test_point_retrival()
+{
+    std::cout << "Max point in vox: " << tp.max_points_in_vox << std::endl;
+    PointStoragePtr<T> node = std::make_shared<PointStorage<T>>(
+        tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
+        tp.track_stats, tp.init_map_size, tp.voxel_size);
+
+    std::cout << "\nTesting Point Retrival" << std::endl;
+    auto points = create_random_points(tp.build_size, tp.points_gen_range);
+    point_storage_run(node, points);
+
+    auto start = std::chrono::high_resolution_clock::now();
+    Point3dWPtrVec<T> pts = node->get_points();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<T> duration = end - start;
+
+    std::cout << "Total number of points extracted: " << pts.size() << " in " << duration.count() * 1000 << " millseconds" << std::endl;
+}
+
+template <typename T>
 void RunFunctions<T>::testing_combined_delete()
 {
     PointStoragePtr<T> node = std::make_shared<PointStorage<T>>(
-        tp.max_points_in_vox, tp.imbal_factor, tp.del_nodes_factor,
+        tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
         tp.track_stats, tp.init_map_size, tp.voxel_size);
 
     std::cout << "\nTesting Delete Strategy" << std::endl;

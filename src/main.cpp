@@ -14,6 +14,7 @@ int main(int argc, char **argv)
     opt.testing_search();
     opt.testing_downsample_scheme();
     opt.testing_combined_delete();
+    opt.test_point_retrival();
 
     bool faster_lio_test;
     set_param(faster_lio_test, test_params["faster_lio_test"]);

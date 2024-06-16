@@ -17,7 +17,7 @@ class PointStorage : public std::enable_shared_from_this<PointStorage<T>>
 public:
     using Ptr = std::shared_ptr<PointStorage<T>>;
     PointStorage(
-        size_t max_points_in_vox = 30, T imbal_factor = 0.63, T del_nodes_factor = 0.5,
+        int max_points_in_vox = -1, size_t max_points_in_oct_layer = 30, T imbal_factor = 0.63, T del_nodes_factor = 0.5,
         bool track_stats = false, size_t init_map_size = std::numeric_limits<size_t>::max(),
         T voxel_size = 1.0);
 
@@ -42,6 +42,9 @@ public:
     void delete_within_points(const Eigen::Matrix<T, 3, 1> &ptd, T range, DeleteType del_type = DeleteType::Spherical);
 
     void delete_outside_points(const Eigen::Matrix<T, 3, 1> &ptd, T range, DeleteType del_type = DeleteType::Spherical);
+
+    // point retrival
+    Point3dWPtrVec<T> get_points();
 
 private:
     void load_rebalance(BlockPtrVecCC<T> &scapegoats);

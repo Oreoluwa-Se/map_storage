@@ -1,11 +1,15 @@
 #include "map_storage/sections/kd_tree/maphub.hpp"
 #include <tbb/parallel_for_each.h>
+#include <tbb/parallel_for.h>
+#include <atomic>
 
 template <typename T>
 Config<T>::Config(
-    size_t max_points_in_vox, T imbal_factor, T del_nodes_factor,
+    int max_points_in_vox, size_t max_points_in_oct_layer,
+    T imbal_factor, T del_nodes_factor,
     bool track_stats, size_t init_map_size, T voxel_size)
     : max_points_in_vox(max_points_in_vox),
+      max_points_in_oct_layer(max_points_in_oct_layer),
       imbal_factor(imbal_factor),
       del_nodes_factor(del_nodes_factor),
       track_stats(track_stats),
@@ -18,7 +22,7 @@ bool Config<T>::insert_or_create_block(const Eigen::Vector3i &vox, BlockPtr<T> &
     typename BlockPtrMap<T>::accessor loc;
     if (block_map.insert(loc, vox))
     {
-        new_b = std::make_shared<Block<T>>(vox, max_points_in_vox, voxel_size, track_stats);
+        new_b = std::make_shared<Block<T>>(vox, max_points_in_vox, max_points_in_oct_layer, voxel_size, track_stats);
         loc->second = new_b;
         return true;
     }
@@ -64,7 +68,8 @@ void Config<T>::grouping_points(PointContainer &build_points, BlockPtrVecCC<T> &
                 voxels.emplace_back(block);
 
             // insert into voxel
-            block->oct->split_insert_point(point);
+            if (block->point_insert_clause())
+                block->oct->split_insert_point(point);
         });
 
     // flush the remaning points on the worker thread
@@ -99,6 +104,31 @@ void Config<T>::replace_voxel(BlockPtr<T> &new_blk)
         if (loc->second != new_blk)
             loc->second = new_blk;
     }
+}
+
+template <typename T>
+std::pair<size_t, VisualizationPointStorage<T>> Config<T>::map_points()
+{
+    // Returns a vector of vectors essentially
+    VisualizationPointStorage<T> points_per_voxel;
+    points_per_voxel.reserve(block_map.size());
+    std::atomic<size_t> total_size(0);
+
+    tbb::parallel_for_each(
+        block_map.begin(),
+        block_map.end(),
+        [&](auto &val)
+        {
+            Point3dWPtrVecCC<T> pts;
+            size_t cur_size = val.second->oct->bbox->get_size();
+            pts.reserve(cur_size);
+            val.second->oct->gather_points(pts);
+
+            total_size += cur_size;
+            points_per_voxel.emplace_back(pts);
+        });
+
+    return {total_size.load(), points_per_voxel};
 }
 
 // setting templates for compiler

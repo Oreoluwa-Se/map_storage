@@ -7,12 +7,12 @@
 
 // Individual blocks
 template <typename T>
-Block<T>::Block(const Eigen::Vector3i &value, size_t max_points, T voxel_size, bool track_stats)
-    : oct(std::make_shared<Octree<T>>(max_points, track_stats)),
+Block<T>::Block(const Eigen::Vector3i &value, int max_vox_size, size_t max_points_oct_layer, T voxel_size, bool track_stats)
+    : oct(std::make_shared<Octree<T>>(max_points_oct_layer, track_stats)),
       node_rep(value), node_rep_d(value.cast<T>()),
       v_min(node_rep_d - Eigen::Matrix<T, 3, 1>::Constant(voxel_size * 0.5)),
       v_max(node_rep_d + Eigen::Matrix<T, 3, 1>::Constant(voxel_size * 0.5)),
-      voxel_size(voxel_size) {}
+      voxel_size(voxel_size), max_vox_size(max_vox_size) {}
 
 template <typename T>
 void Block<T>::set_axis(int _axis)
@@ -166,6 +166,15 @@ bool Block<T>::is_leaf()
     auto right_child = get_child(Connection::Right);
 
     return left_child == nullptr && right_child == nullptr;
+}
+
+template <typename T>
+bool Block<T>::point_insert_clause()
+{
+    if (max_vox_size == -1)
+        return true;
+
+    return oct->bbox->get_size() <= max_vox_size;
 }
 
 template <typename T>

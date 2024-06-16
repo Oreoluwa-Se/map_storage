@@ -30,7 +30,7 @@ template <typename T>
 using Point3dWPtrVecCC = tbb::concurrent_vector<Point3dWPtr<T>>;
 
 template <typename T>
-using VisualizationPointStorage = tbb::concurrent_vector<Point3dPtrVect<T>>;
+using VisualizationPointStorage = tbb::concurrent_vector<Point3dWPtrVecCC<T>>;
 
 template <typename T>
 using APointVector = std::vector<Point3d<T>, Eigen::aligned_allocator<Point3d<T>>>;

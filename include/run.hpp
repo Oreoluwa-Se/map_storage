@@ -15,12 +15,13 @@ template <typename T>
 struct TestParams
 {
     // Build parameters
-    size_t max_points_in_vox = 30; // maximum number of points stored in each level for an octant
-    T imbal_factor = 0.7;          // size discrepancy between left and right tree to trigger rebalancing
-    T del_nodes_factor = 0.5;      // maximum ratio between valid and invalid nodes before rebalancing
-    bool track_stats = false;      // To track the mean and covariance for each voxel - mean is used during search and covariance can be used as a validity check
-    size_t init_map_size = 1;      // minimum number of points to build initial map
-    T voxel_size = 1.0;            // total voxel_size
+    int max_points_in_vox = -1;
+    size_t max_points_in_oct_layer = 30; // maximum number of points stored in each level for an octant
+    T imbal_factor = 0.7;                // size discrepancy between left and right tree to trigger rebalancing
+    T del_nodes_factor = 0.5;            // maximum ratio between valid and invalid nodes before rebalancing
+    bool track_stats = false;            // To track the mean and covariance for each voxel - mean is used during search and covariance can be used as a validity check
+    size_t init_map_size = 1;            // minimum number of points to build initial map
+    T voxel_size = 1.0;                  // total voxel_size
 
     // Test Params
     T points_gen_range = 5.0; // cubiod
@@ -71,6 +72,8 @@ struct RunFunctions
     void testing_combined_delete();
 
     void incremental_info();
+
+    void test_point_retrival();
 
 private:
     T voxel_size;

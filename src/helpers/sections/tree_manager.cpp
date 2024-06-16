@@ -6,9 +6,10 @@
 
 template <typename T>
 PointStorage<T>::PointStorage(
-    size_t max_points_in_vox, T imbal_factor, T del_nodes_factor,
+    int max_points_in_vox, size_t max_points_in_oct_layer,
+    T imbal_factor, T del_nodes_factor,
     bool track_stats, size_t init_map_size, T voxel_size)
-    : config(std::make_shared<Config<T>>(max_points_in_vox, imbal_factor, del_nodes_factor, track_stats, init_map_size, voxel_size)),
+    : config(std::make_shared<Config<T>>(max_points_in_vox, max_points_in_oct_layer, imbal_factor, del_nodes_factor, track_stats, init_map_size, voxel_size)),
       builder(std::make_shared<MapBuilder<T>>()),
       inserter(std::make_shared<Inserter<T>>()),
       searcher(std::make_shared<Searcher<T>>()),
@@ -32,6 +33,27 @@ template <typename T>
 bool PointStorage<T>::build(Point3dPtrVect<T> &points)
 {
     return builder->build(points);
+}
+
+template <typename T>
+Point3dWPtrVec<T> PointStorage<T>::get_points()
+{
+    size_t total_size;
+    VisualizationPointStorage<T> oct_points;
+    std::tie(total_size, oct_points) = config->map_points();
+
+    Point3dWPtrVec<T> points;
+    points.reserve(total_size);
+
+    for (auto &point_sector : oct_points)
+    {
+        points.insert(
+            points.end(),
+            std::make_move_iterator(point_sector.begin()),
+            std::make_move_iterator(point_sector.end()));
+    }
+
+    return points;
 }
 
 template <typename T>
