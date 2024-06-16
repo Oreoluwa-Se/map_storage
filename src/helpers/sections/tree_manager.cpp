@@ -46,12 +46,7 @@ Point3dWPtrVecCC<T> PointStorage<T>::get_points()
     points.reserve(total_size);
 
     for (auto &point_sector : oct_points)
-    {
-        points.insert(
-            points.end(),
-            std::make_move_iterator(point_sector.begin()),
-            std::make_move_iterator(point_sector.end()));
-    }
+        std::move(point_sector.begin(), point_sector.end(), std::back_inserter(points));
 
     return points;
 }
