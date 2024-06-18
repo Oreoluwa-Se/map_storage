@@ -116,47 +116,20 @@ template struct DownsampleData<double>;
 template struct DownsampleData<float>;
 
 template <typename T>
-template <typename PointContainer>
-Point3dPtrVectCC<T> Downsample<T>::regular(PointContainer &vector, T dwnsample_ratio)
-
+void Downsample<T>::regular_insert(Point3dPtr<T> &point)
 {
-    std::array<DownsampleData<T>, 8> to_flushs;
+    to_flushs[point->octant_key].add_point(point);
+}
 
-    // group into cardinality and variance
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, vector.size()),
-        [&](const tbb::blocked_range<size_t> &range)
-        {
-            for (size_t i = range.begin(); i != range.end(); ++i)
-            {
-                int signc = Point3d<T>::sign_cardinality(vector[i]->point);
-                to_flushs[signc].add_point(vector[i]);
-            }
-        });
-
-    // get spread and count for all voxels
-    Eigen::Matrix<T, 1, Eigen::Dynamic> variances, counts;
-    Downsample<T>::collect_var_counts(variances, counts, to_flushs);
-
-    // scale by maximum[we use information about spread and density]
-    T d_size = dwnsample_ratio * static_cast<T>(vector.size());
-    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = DownsampleData<T>::weight_generator(variances, counts, d_size);
-    Point3dPtrVectCC<T> collection;
-    boost::shared_mutex mtx;
-
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, to_flushs.size()),
-        [&](const tbb::blocked_range<size_t> &range)
-        {
-            for (size_t i = range.begin(); i != range.end(); ++i)
-            {
-                Point3dPtrVectCC<T> res = to_flushs[i].reduced(std::max(T(1), weight(i)));
-                for (auto &p : res)
-                    collection.push_back(p);
-            }
-        });
-
-    return collection;
+template <typename T>
+void Downsample<T>::clustered_insert(Point3dPtr<T> &point)
+{
+    to_flushs[point->octant_key].add_point(point);
+    if (ts.insert(point->timestamp).second)
+    {
+        boost::unique_lock<boost::shared_mutex> lock(output_mtx);
+        output[point->timestamp] = Point3dPtrVectCC<T>();
+    }
 }
 
 template <typename T>
@@ -179,6 +152,94 @@ void Downsample<T>::collect_var_counts(Eigen::Matrix<T, 1, Eigen::Dynamic> &var,
 }
 
 template <typename T>
+Eigen::Matrix<T, 1, Eigen::Dynamic> Downsample<T>::generate_weight(
+    size_t vector_size, T dwnsample_ratio, std::array<DownsampleData<T>, 8> &o_points)
+{
+    // get spread and count for all voxels
+    Eigen::Matrix<T, 1, Eigen::Dynamic> variances, counts;
+    Downsample<T>::collect_var_counts(variances, counts, o_points);
+
+    // scale by maximum[we use information about spread and density]
+    T d_size = dwnsample_ratio * static_cast<T>(vector_size);
+    return DownsampleData<T>::weight_generator(variances, counts, d_size);
+}
+
+template <typename T>
+template <typename PointContainer>
+Point3dPtrVectCC<T> Downsample<T>::regular(PointContainer &vector, T dwnsample_ratio)
+
+{
+    std::array<DownsampleData<T>, 8> to_flushs;
+
+    // group into cardinality and variance
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, vector.size()),
+        [&](const tbb::blocked_range<size_t> &range)
+        {
+            for (size_t i = range.begin(); i != range.end(); ++i)
+                to_flushs[vector[i]->octant_key].add_point(vector[i]);
+        });
+
+    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = Downsample<T>::generate_weight(vector.size(), dwnsample_ratio, to_flushs);
+    Point3dPtrVectCC<T> collection;
+
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, to_flushs.size()),
+        [&](const tbb::blocked_range<size_t> &range)
+        {
+            for (size_t i = range.begin(); i != range.end(); ++i)
+            {
+                Point3dPtrVectCC<T> res = to_flushs[i].reduced(std::max(T(1), weight(i)));
+                for (auto &p : res)
+                    collection.push_back(p);
+            }
+        });
+
+    return collection;
+}
+
+template <typename T>
+Point3dPtrVectCC<T> Downsample<T>::process_regular(size_t points_size, T dwnsample_ratio)
+{
+    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = Downsample<T>::generate_weight(points_size, dwnsample_ratio, to_flushs);
+    Point3dPtrVectCC<T> collection;
+
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, to_flushs.size()),
+        [&](const tbb::blocked_range<size_t> &range)
+        {
+            for (size_t i = range.begin(); i != range.end(); ++i)
+            {
+                Point3dPtrVectCC<T> res = to_flushs[i].reduced(std::max(T(1), weight(i)));
+                for (auto &p : res)
+                    collection.push_back(p);
+            }
+        });
+
+    return collection;
+}
+
+template <typename T>
+std::map<T, Point3dPtrVectCC<T>> Downsample<T>::process_clustered(size_t points_size, T dwnsample_ratio)
+{
+    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = Downsample<T>::generate_weight(points_size, dwnsample_ratio, to_flushs);
+
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, to_flushs.size()),
+        [&](const tbb::blocked_range<size_t> &range)
+        {
+            for (size_t i = range.begin(); i != range.end(); ++i)
+            {
+                auto res = to_flushs[i].reduced(std::max(T(1.0), weight(i)));
+                for (auto &point : res)
+                    output[point->timestamp].push_back(point);
+            }
+        });
+
+    return output;
+}
+
+template <typename T>
 template <typename PointContainer>
 std::map<T, Point3dPtrVectCC<T>> Downsample<T>::clustered_run(PointContainer &vector, T dwnsample_ratio)
 {
@@ -194,8 +255,7 @@ std::map<T, Point3dPtrVectCC<T>> Downsample<T>::clustered_run(PointContainer &ve
         {
             for (size_t i = range.begin(); i != range.end(); ++i)
             {
-                int signc = Point3d<T>::sign_cardinality(vector[i]->point);
-                to_flushs[signc].add_point(vector[i]);
+                to_flushs[vector[i]->octant_key].add_point(vector[i]);
                 if (ts.insert(vector[i]->timestamp).second)
                 {
                     boost::unique_lock<boost::shared_mutex> lock(output_mtx);
@@ -204,14 +264,8 @@ std::map<T, Point3dPtrVectCC<T>> Downsample<T>::clustered_run(PointContainer &ve
             }
         });
 
-    Eigen::Matrix<T, 1, Eigen::Dynamic> variances, counts;
-    Downsample<T>::collect_var_counts(variances, counts, to_flushs);
+    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = Downsample<T>::generate_weight(vector.size(), dwnsample_ratio, to_flushs);
 
-    // scale by maximum [we use information about spread and density]
-    T d_size = dwnsample_ratio * static_cast<T>(vector.size());
-    Eigen::Matrix<T, 1, Eigen::Dynamic> weight = DownsampleData<T>::weight_generator(variances, counts, d_size);
-
-    std::vector<Point3dPtrVectCC<T>> collection(ts.size());
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, to_flushs.size()),
         [&](const tbb::blocked_range<size_t> &range)

@@ -44,6 +44,16 @@ struct DownsampleData
 template <typename T>
 struct Downsample
 {
+    void regular_insert(Point3dPtr<T> &point);
+
+    void clustered_insert(Point3dPtr<T> &point);
+
+    std::map<T, Point3dPtrVectCC<T>> process_clustered(size_t points_size, T dwnsample_ratio);
+
+    Point3dPtrVectCC<T> process_regular(size_t points_size, T dwnsample_ratio);
+
+    static Eigen::Matrix<T, 1, Eigen::Dynamic> generate_weight(size_t size, T dwnsample_ratio, std::array<DownsampleData<T>, 8> &o_points);
+
     // Using variance based approach means we only downsample when possible. Avoids loosing key information
     template <typename PointContainer>
     static Point3dPtrVectCC<T> regular(PointContainer &vector, T dwnsample_ratio = 0.5);
@@ -52,5 +62,11 @@ struct Downsample
     static std::map<T, Point3dPtrVectCC<T>> clustered_run(PointContainer &vector, T dwnsample_ratio = 0.5);
 
     static void collect_var_counts(Eigen::Matrix<T, 1, Eigen::Dynamic> &var, Eigen::Matrix<T, 1, Eigen::Dynamic> &counts, std::array<DownsampleData<T>, 8> &to_flush);
+
+private:
+    std::array<DownsampleData<T>, 8> to_flushs;
+    tbb::concurrent_unordered_set<T> ts;
+    std::map<T, Point3dPtrVectCC<T>> output;
+    boost::shared_mutex output_mtx;
 };
 #endif
