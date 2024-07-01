@@ -434,7 +434,7 @@ AVector3TVec<T> OctreeNode<T>::get_matched(SearchHeap<T> &result, const Eigen::M
     if (verbose)
     {
         oss << std::fixed << std::setprecision(4); // Set fixed-point notation and precision
-        oss << "Query Point: " << Point3d<T>::eig_to_string(qp) << "\n";
+        oss << "\nQuery Point: " << Point3d<T>::eig_to_string(qp) << "\n";
         oss << "Matched Points:\n";
         oss << std::setw(10) << std::left << "Index" << std::setw(40) << "Point" << std::setw(15) << "Distance" << "\n";
         oss << "--------------------------------------------------------------\n";

@@ -174,7 +174,7 @@ bool Block<T>::point_insert_clause()
     if (max_vox_size == -1)
         return true;
 
-    return oct->bbox->get_size() <= max_vox_size;
+    return oct->alt_size.load(std::memory_order_acquire) <= max_vox_size;
 }
 
 template <typename T>
@@ -286,6 +286,7 @@ std::string Block<T>::format_block_info(bool is_left, size_t depth)
 
     if (check_attributes(BoolChecks::Scapegoat))
         n_string << " [Scapegoat]";
+
     return n_string.str();
 }
 
@@ -529,6 +530,21 @@ T Block<T>::closest_distance(const Eigen::Matrix<T, 3, 1> &point)
     return BBox<T>::closest_distance(point, v_min, v_max);
 }
 
+template <typename T>
+std::string Block<T>::bbox_info_to_string()
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3); // Set fixed-point notation and precision
+    boost::shared_lock<boost::shared_mutex> lock(mutex);
+    oss << "\nVoxel Level BoundingBox Information:" << std::endl;
+    oss << "-------------------------" << std::endl;
+    oss << "Current: [" << node_rep(0) << ".0, " << node_rep(1) << ".0, " << node_rep(2) << ".0]" << std::endl;
+    oss << "Min: [" << v_min(0) << ", " << v_min(1) << ", " << v_min(2) << "]" << std::endl;
+    oss << "Max: [" << v_max(0) << ", " << v_max(1) << ", " << v_max(2) << "]" << std::endl;
+    oss << "-------------------------" << std::endl;
+
+    return oss.str();
+}
 // ....................... Logger Operations .......................
 template <typename T>
 typename Block<T>::Ptr Block<T>::log_insert(const RunningStats<T> &c_stats, const Eigen::Vector3i &n_block)

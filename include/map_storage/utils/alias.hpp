@@ -38,7 +38,7 @@ using APointVector = std::vector<Point3d<T>, Eigen::aligned_allocator<Point3d<T>
 using AVector3iVector = std::vector<Eigen::Vector3i, Eigen::aligned_allocator<Eigen::Vector3i>>;
 
 template <typename T>
-using AVector3TVec = std::vector<Eigen::Matrix<T, 3, 1>, Eigen::aligned_allocator<Eigen::Matrix<T, 3, 1>>>;
+using AVector3TVec = std::vector<Eigen::Matrix<T, 3, 1>>;
 
 template <typename T>
 using AVector4TVec = std::vector<Eigen::Matrix<T, 4, 1>, Eigen::aligned_allocator<Eigen::Matrix<T, 4, 1>>>;
@@ -57,6 +57,9 @@ using TMatType = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
 
 template <typename T>
 using DistancePointPair = std::pair<T, Point3dPtr<T>>;
+
+template <typename T>
+using DistancePointPairEig = std::pair<T, Eigen::Matrix<T, 3, 1>>;
 
 // ...................... CREATING SOPHUS TEMPLATE .............................
 // Primary template

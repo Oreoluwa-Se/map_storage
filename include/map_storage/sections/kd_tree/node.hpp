@@ -148,6 +148,8 @@ public:
 
     bool rebal_status();
 
+    std::string bbox_info_to_string();
+
 public:
     OctreePtr<T> oct = nullptr;        // stores the points in current voxel
     Eigen::Vector3i node_rep;          // node voxel number [integer]

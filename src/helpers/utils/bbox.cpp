@@ -13,17 +13,14 @@ template <typename T>
 BBox<T>::BBox(const Eigen::Matrix<T, 3, 1> &point, bool _track_cov)
     : min(point), max(point), mean(Eigen::Matrix<T, 3, 1>::Zero()),
       cov(Eigen::Matrix<T, 3, 3>::Identity() * 1e9),
-      num_points(1), track_cov(_track_cov) { temp_points.push_back(point); }
+      num_points(0), track_cov(_track_cov) {}
 
 template <typename T>
 BBox<T>::BBox(const Eigen::Matrix<T, 3, 1> &min_point, const Eigen::Matrix<T, 3, 1> &max_point, bool _track_cov)
     : min(min_point), max(min_point), mean(Eigen::Matrix<T, 3, 1>::Zero()),
       cov(Eigen::Matrix<T, 3, 3>::Identity() * 1e9),
-      num_points(2), track_cov(_track_cov)
+      num_points(0), track_cov(_track_cov)
 {
-    temp_points.push_back(min_point);
-    temp_points.push_back(max_point);
-
     min = min.cwiseMin(max_point);
     max = max.cwiseMax(max_point);
 }
@@ -40,6 +37,13 @@ Eigen::Matrix<T, 3, 1> BBox<T>::get_mean() const
 {
     boost::shared_lock<boost::shared_mutex> lock(mutex);
     return mean;
+}
+
+template <typename T>
+Eigen::Matrix<T, 3, 3> BBox<T>::get_cov() const
+{
+    boost::shared_lock<boost::shared_mutex> lock(mutex);
+    return cov;
 }
 
 template <typename T>
@@ -129,60 +133,6 @@ void BBox<T>::min_max_update(const Eigen::Matrix<T, 3, 1> &point)
     boost::unique_lock<boost::shared_mutex> lock(mutex);
     min = min.cwiseMin(point);
     max = max.cwiseMax(point);
-}
-
-template <typename T>
-void BBox<T>::update(const Eigen::Matrix<T, 3, 1> &point)
-{
-    boost::unique_lock<boost::shared_mutex> lock(mutex);
-    min = min.cwiseMin(point);
-    max = max.cwiseMax(point);
-
-    if (track_cov)
-    {
-        temp_points.push_back(point);
-        if (num_points >= 4)
-            num_points == 4 ? init_mean_and_cov() : update_mean_and_cov(point);
-    }
-
-    ++num_points;
-}
-
-template <typename T>
-void BBox<T>::init_mean_and_cov()
-{
-    mean = Eigen::Matrix<T, 3, 1>::Zero();
-    for (const auto &p : temp_points)
-        mean.noalias() += p;
-
-    mean /= static_cast<T>(temp_points.size());
-
-    cov = Eigen::Matrix<T, 3, 3>::Zero();
-    for (const auto &p : temp_points)
-    {
-        Eigen::Matrix<T, 3, 1> diff = p - mean;
-        cov.noalias() += diff * diff.transpose();
-    }
-    cov /= static_cast<T>(temp_points.size() - 1);
-
-    // clearing information
-    temp_points.clear();
-}
-
-template <typename T>
-void BBox<T>::update_mean_and_cov(const Eigen::Matrix<T, 3, 1> &point)
-{
-    Eigen::Matrix<T, 3, 1> prev_mean = mean;
-    T num = static_cast<T>(num_points);
-
-    // Update mean incrementally
-    mean = (mean * (num - 1.0) + point) / num;
-
-    // Update cov incrementally
-    Eigen::Matrix<T, 3, 1> old_diff = point - prev_mean;
-    Eigen::Matrix<T, 3, 1> new_diff = point - mean;
-
-    cov = ((num - 2.0) * cov + old_diff * new_diff.transpose()) / (num - 1.0);
 }
 
 template <typename T>
@@ -307,17 +257,69 @@ typename BBox<T>::Status BBox<T>::box_within_defined_box(
 template <typename T>
 void BBox<T>::unsafe_min_max_update(const Eigen::Matrix<T, 3, 1> &point)
 {
+
     min = min.cwiseMin(point);
     max = max.cwiseMax(point);
 
     if (track_cov)
     {
-        temp_points.push_back(point);
-        if (num_points >= 4)
-            num_points == 4 ? init_mean_and_cov() : update_mean_and_cov(point);
+        if (!mean_cov_initialized)
+        {
+            ++num_points;
+            temp_points.push_back(point);
+            if (num_points >= 3)
+                init_mean_and_cov();
+        }
+        else
+            update_mean_and_cov(point);
     }
+    else
+        ++num_points;
+}
+template <typename T>
+void BBox<T>::update(const Eigen::Matrix<T, 3, 1> &point)
+{
+    boost::unique_lock<boost::shared_mutex> lock(mutex);
+    unsafe_min_max_update(point);
+}
 
+template <typename T>
+void BBox<T>::init_mean_and_cov()
+{
+    mean = Eigen::Matrix<T, 3, 1>::Zero();
+    for (const auto &p : temp_points)
+        mean.noalias() += p;
+
+    mean /= static_cast<T>(temp_points.size());
+
+    cov = Eigen::Matrix<T, 3, 3>::Zero();
+    for (const auto &p : temp_points)
+    {
+        Eigen::Matrix<T, 3, 1> diff = p - mean;
+        cov.noalias() += diff * diff.transpose();
+    }
+    cov /= static_cast<T>(temp_points.size() - 1);
+
+    mean_cov_initialized = true;
+    // clearing information
+    temp_points.clear();
+}
+
+template <typename T>
+void BBox<T>::update_mean_and_cov(const Eigen::Matrix<T, 3, 1> &point)
+{
     ++num_points;
+    Eigen::Matrix<T, 3, 1> prev_mean = mean;
+    T num = static_cast<T>(num_points);
+
+    // Update mean incrementally
+    mean = (mean * (num - 1.0) + point) / num;
+
+    // Update cov incrementally
+    Eigen::Matrix<T, 3, 1> old_diff = point - prev_mean;
+    Eigen::Matrix<T, 3, 1> new_diff = point - mean;
+
+    cov = ((num - 2.0) * cov + old_diff * new_diff.transpose()) / (num - 1.0);
 }
 
 template <typename T>
@@ -333,7 +335,33 @@ void BBox<T>::unsafe_reset(bool min_max_only)
     min = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::max();
     max = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::lowest();
     if (!min_max_only)
+    {
         num_points = 0;
+        mean_cov_initialized = false;
+    }
+}
+
+template <typename T>
+void BBox<T>::mean_cov_update(Eigen::Matrix<T, 3, 1> &batch_mean, Eigen::Matrix<T, 3, 3> &batch_cov, size_t batch_count)
+{
+    if (!mean_cov_initialized)
+    {
+        mean = batch_mean;
+        cov = batch_cov;
+        mean_cov_initialized = true;
+    }
+    else
+    {
+        T tot_points = static_cast<T>(num_points + batch_count);
+        Eigen::Matrix<T, 3, 1> new_mean = (mean * num_points + batch_mean * batch_count) / tot_points;
+
+        Eigen::Matrix<T, 3, 3> term1 = (num_points - 1) * cov;
+        Eigen::Matrix<T, 3, 3> term2 = (batch_count - 1) * batch_cov;
+        Eigen::Matrix<T, 3, 3> term3 = num_points * batch_count * (mean - batch_mean) * (mean - batch_mean).transpose() / tot_points;
+
+        cov = (term1 + term2 + term3) / (tot_points - 1.0);
+        mean = new_mean;
+    }
 }
 
 template <typename T>
@@ -343,13 +371,20 @@ void BBox<T>::update(const AVector3TVecCC<T> &points)
     if (batch_count == 0)
         return;
 
+    if (points.size() == 1)
+    {
+        boost::unique_lock<boost::shared_mutex> lock(mutex);
+        unsafe_min_max_update(points[0]);
+        return;
+    }
+
     // Compute batch mean and cov
     Eigen::Matrix<T, 3, 1> batch_mean = Eigen::Matrix<T, 3, 1>::Zero();
     {
         boost::unique_lock<boost::shared_mutex> lock(mutex);
         for (const auto &point : points)
         {
-            batch_mean += point;
+            batch_mean.noalias() += point;
             min = min.cwiseMin(point);
             max = max.cwiseMax(point);
         }
@@ -363,28 +398,12 @@ void BBox<T>::update(const AVector3TVecCC<T> &points)
         for (const auto &point : points)
         {
             Eigen::Matrix<T, 3, 1> diff = point - batch_mean;
-            batch_cov += diff * diff.transpose();
+            batch_cov.noalias() += diff * diff.transpose();
         }
         batch_cov /= static_cast<T>(batch_count - 1);
 
         boost::unique_lock<boost::shared_mutex> lock(mutex);
-        if (num_points == 0)
-        {
-            mean = batch_mean;
-            cov = batch_cov;
-        }
-        else
-        {
-            T tot_points = static_cast<T>(num_points + batch_count);
-            Eigen::Matrix<T, 3, 1> new_mean = (mean * num_points + batch_mean * batch_count) / tot_points;
-
-            Eigen::Matrix<T, 3, 3> term1 = (num_points - 1) * cov;
-            Eigen::Matrix<T, 3, 3> term2 = (batch_count - 1) * batch_cov;
-            Eigen::Matrix<T, 3, 3> term3 = num_points * batch_count * (mean - batch_mean) * (mean - batch_mean).transpose() / tot_points;
-
-            cov = (term1 + term2 + term3) / (tot_points - 1.0);
-            mean = new_mean;
-        }
+        mean_cov_update(batch_mean, batch_cov, batch_count);
     }
 
     num_points += batch_count;
@@ -397,13 +416,20 @@ void BBox<T>::update(const Point3dPtrVectCC<T> &points)
     if (batch_count == 0)
         return;
 
+    if (points.size() == 1)
+    {
+        boost::unique_lock<boost::shared_mutex> lock(mutex);
+        unsafe_min_max_update(points[0]->point);
+        return;
+    }
+
     // Compute batch mean and cov
     Eigen::Matrix<T, 3, 1> batch_mean = Eigen::Matrix<T, 3, 1>::Zero();
     {
         boost::unique_lock<boost::shared_mutex> lock(mutex);
         for (const auto &point : points)
         {
-            batch_mean += point->point;
+            batch_mean.noalias() += point->point;
             min = min.cwiseMin(point->point);
             max = max.cwiseMax(point->point);
         }
@@ -417,28 +443,12 @@ void BBox<T>::update(const Point3dPtrVectCC<T> &points)
         for (const auto &point : points)
         {
             Eigen::Matrix<T, 3, 1> diff = point->point - batch_mean;
-            batch_cov += diff * diff.transpose();
+            batch_cov.noalias() += diff * diff.transpose();
         }
         batch_cov /= static_cast<T>(batch_count - 1);
 
         boost::unique_lock<boost::shared_mutex> lock(mutex);
-        if (num_points == 0)
-        {
-            mean = batch_mean;
-            cov = batch_cov;
-        }
-        else
-        {
-            T tot_points = static_cast<T>(num_points + batch_count);
-            Eigen::Matrix<T, 3, 1> new_mean = (mean * num_points + batch_mean * batch_count) / tot_points;
-
-            Eigen::Matrix<T, 3, 3> term1 = (num_points - 1) * cov;
-            Eigen::Matrix<T, 3, 3> term2 = (batch_count - 1) * batch_cov;
-            Eigen::Matrix<T, 3, 3> term3 = num_points * batch_count * (mean - batch_mean) * (mean - batch_mean).transpose() / tot_points;
-
-            cov = (term1 + term2 + term3) / (tot_points - 1.0);
-            mean = new_mean;
-        }
+        mean_cov_update(batch_mean, batch_cov, batch_count);
     }
 
     num_points += batch_count;
@@ -450,6 +460,13 @@ void BBox<T>::update(const AVector3TVec<T> &points)
     size_t batch_count = points.size();
     if (batch_count == 0)
         return;
+
+    if (points.size() == 1)
+    {
+        boost::unique_lock<boost::shared_mutex> lock(mutex);
+        unsafe_min_max_update(points[0]);
+        return;
+    }
 
     // Compute batch mean and cov
     Eigen::Matrix<T, 3, 1> batch_mean = Eigen::Matrix<T, 3, 1>::Zero();
@@ -475,23 +492,7 @@ void BBox<T>::update(const AVector3TVec<T> &points)
         batch_cov /= static_cast<T>(batch_count - 1);
 
         boost::unique_lock<boost::shared_mutex> lock(mutex);
-        if (num_points == 0)
-        {
-            mean = batch_mean;
-            cov = batch_cov;
-        }
-        else
-        {
-            T tot_points = static_cast<T>(num_points + batch_count);
-            Eigen::Matrix<T, 3, 1> new_mean = (mean * num_points + batch_mean * batch_count) / tot_points;
-
-            Eigen::Matrix<T, 3, 3> term1 = (num_points - 1) * cov;
-            Eigen::Matrix<T, 3, 3> term2 = (batch_count - 1) * batch_cov;
-            Eigen::Matrix<T, 3, 3> term3 = num_points * batch_count * (mean - batch_mean) * (mean - batch_mean).transpose() / tot_points;
-
-            cov = (term1 + term2 + term3) / (tot_points - 1.0);
-            mean = new_mean;
-        }
+        mean_cov_update(batch_mean, batch_cov, batch_count);
     }
 
     num_points += batch_count;

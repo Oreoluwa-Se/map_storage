@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <tbb/concurrent_vector.h>
 #include <boost/thread/shared_mutex.hpp>
+#include <atomic>
 
 template <typename T>
 class Octree
@@ -35,6 +36,7 @@ public:
 
 public:
     BBoxPtr<T> bbox = nullptr;
+    std::atomic<size_t> alt_size{0};
 
 private:
     void delete_operation(const Eigen::Matrix<T, 3, 1> &center, T range, DeleteType del_type);

@@ -21,6 +21,7 @@ void Octree<T>::clear()
 template <typename T>
 void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
 {
+    alt_size.fetch_add(1, std::memory_order_release);
 
     { // if inserting just add it to list of nodes to insert
         boost::shared_lock<boost::shared_mutex> lock_s(mutexes[point->octant_key]);
@@ -96,10 +97,8 @@ template <typename T>
 void Octree<T>::range_search(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range)
 {
     if (BBox<T>::Status::Outside == bbox->point_within_bbox(qp, range))
-    {
-
         return;
-    }
+
     int sign_c = Point3d<T>::sign_cardinality(qp);
     int curr_idx = sign_c;
     do

@@ -103,7 +103,6 @@ void RunFunctions<T>::point_storage_run(PointStoragePtr<T> &node, Point3dPtrVect
     if (tp.verbose)
     {
         std::cout << "Insertion Execution time: " << 1000 * duration.count() << " milliseconds\n";
-        node->print_tree();
     }
 }
 
@@ -144,6 +143,18 @@ void RunFunctions<T>::testing_insert_schemes()
     std::cout << "\nParallel thread + Flush operation" << std::endl;
     measure_time(&RunFunctions<T>::octree_ptr_run, this, node_stuff_3, points);
     std::cout << *(node_stuff_3->bbox) << std::endl;
+
+    PointStoragePtr<T> ps = std::make_shared<PointStorage<T>>(
+        tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
+        tp.track_stats, tp.init_map_size, tp.voxel_size);
+    {
+        auto verbose = tp.verbose;
+        tp.verbose = true;
+        points = create_random_points(tp.build_size, tp.points_gen_range);
+        std::cout << "\nFinal version" << std::endl;
+        point_storage_run(ps, points);
+        tp.verbose = verbose;
+    }
 }
 
 template <typename T>
@@ -207,21 +218,38 @@ template <typename T>
 void RunFunctions<T>::testing_search()
 {
     std::cout << "\nTesting the search scheme" << std::endl;
-    std::cout << "Note: Node and Tree use different build points." << std::endl;
-    std::cout << "      The focus here is the speed gain between regular octree and the cardinal octree " << std::endl;
+    std::cout << "The focus here is the speed gain between regular octree and the cardinal octree and KD-Tree-OctTree" << std::endl;
     bool prev_verb = tp.verbose;
     tp.verbose = false;
-    auto node = create_and_insert_node();
-    auto tree = create_and_insert_tree();
+
+    // points to insert:
+    auto points = create_random_points(tp.build_size, tp.points_gen_range);
+
+    // instances of types
+    OctreeNodePtr<T> node = std::make_shared<OctreeNode<T>>(tp.max_points_in_vox, tp.track_stats);
+    {
+        measure_time(&RunFunctions<T>::single_node_update_run_parallel, this, node, points);
+    }
+    OctreePtr<T> tree = std::make_shared<Octree<T>>(tp.max_points_in_vox, tp.track_stats);
+    {
+        measure_time(&RunFunctions<T>::octree_ptr_run, this, tree, points);
+    }
+
+    PointStoragePtr<T> ps = std::make_shared<PointStorage<T>>(
+        tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
+        tp.track_stats, tp.init_map_size, tp.voxel_size);
+    {
+        point_storage_run(ps, points);
+    }
+
     std::cout << "Number of points to search from: " << tp.build_size << std::endl;
     std::cout << "============================\n";
     tp.verbose = prev_verb;
     std::uniform_real_distribution<T>
         dis(-tp.points_gen_range / 2.0, tp.points_gen_range / 2.0);
     Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
-    std::cout << "Basic Octree Trial" << std::endl;
     {
-        std::cout << "Radius search:" << std::endl;
+        std::cout << " Basic Octree Trial Radius search:" << std::endl;
         T search_range = tp.search_radius;
         SearchHeap<T> result;
 
@@ -236,23 +264,7 @@ void RunFunctions<T>::testing_search()
     }
 
     {
-        std::cout << "Range search:" << std::endl;
-        T search_range = tp.search_radius;
-        SearchHeap<T> result;
-
-        auto start = std::chrono::high_resolution_clock::now();
-        node->range_search(result, qp, search_range);
-        auto end = std::chrono::high_resolution_clock::now();
-
-        std::chrono::duration<T> duration = end - start;
-        std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
-        auto res = OctreeNode<T>::get_matched(result, qp, tp.verbose);
-        std::cout << "Final size: " << res.size() << std::endl;
-    }
-
-    std::cout << "\nCardinal Tree Trial" << std::endl;
-    {
-        std::cout << "Radius search:" << std::endl;
+        std::cout << "Cardinal Tree Radius search:" << std::endl;
         T search_range = tp.search_radius;
         SearchHeap<T> result;
 
@@ -267,7 +279,35 @@ void RunFunctions<T>::testing_search()
     }
 
     {
-        std::cout << "Range search:" << std::endl;
+        std::cout << "\nVoxel-Oct Radius Search" << std::endl;
+        T search_range = tp.search_radius;
+        auto start = std::chrono::high_resolution_clock::now();
+        auto result = ps->knn_search(qp, tp.num_nearest, search_range, SearchType::Point);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<T> duration = end - start;
+        std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
+        auto res = Searcher<T>::get_matched_points(result, tp.verbose);
+        std::cout << "Final size: " << res.size() << std::endl;
+    }
+
+    {
+        std::cout << "Basic Octree Trial Range search:" << std::endl;
+        T search_range = tp.search_radius;
+        SearchHeap<T> result;
+
+        auto start = std::chrono::high_resolution_clock::now();
+        node->range_search(result, qp, search_range);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<T> duration = end - start;
+        std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
+        auto res = OctreeNode<T>::get_matched(result, qp, tp.verbose);
+        std::cout << "Final size: " << res.size() << std::endl;
+    }
+
+    {
+        std::cout << "Cardinal Tree Range search:" << std::endl;
         T search_range = tp.search_radius;
         SearchHeap<T> result;
 
@@ -278,6 +318,32 @@ void RunFunctions<T>::testing_search()
 
         std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
         auto res = OctreeNode<T>::get_matched(result, qp, tp.verbose);
+        std::cout << "Final size: " << res.size() << std::endl;
+    }
+
+    {
+        std::cout << "\nVoxel-Oct Range Search" << std::endl;
+        T search_range = tp.search_radius;
+        auto start = std::chrono::high_resolution_clock::now();
+        auto result = ps->range_search(qp, search_range, SearchType::Point);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<T> duration = end - start;
+        std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
+        auto res = Searcher<T>::get_matched_points(result, tp.verbose);
+        std::cout << "Final size: " << res.size() << std::endl;
+    }
+
+    {
+        std::cout << "\nVoxel-Oct Range-Voxel Search" << std::endl;
+        T search_range = tp.search_radius;
+        auto start = std::chrono::high_resolution_clock::now();
+        auto result = ps->range_search(qp, search_range, SearchType::Distribution);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        std::chrono::duration<T> duration = end - start;
+        std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
+        auto res = Searcher<T>::get_matched_points_with_block(result, ps->config, tp.verbose);
         std::cout << "Final size: " << res.size() << std::endl;
     }
 }

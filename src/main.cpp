@@ -10,18 +10,20 @@ int main(int argc, char **argv)
 
     RunFunctions<double> opt(true);
 
-    opt.testing_insert_schemes();
-    opt.testing_search();
-    opt.testing_downsample_scheme();
-    opt.testing_combined_delete();
-    opt.test_point_retrival();
-
     bool faster_lio_test;
     set_param(faster_lio_test, test_params["faster_lio_test"]);
     if (faster_lio_test)
     {
         std::cout << "\nDoing a test based on the faster lio paper" << std::endl;
         opt.incremental_info();
+    }
+    else
+    {
+        // opt.testing_insert_schemes();
+        opt.testing_search();
+        // opt.testing_downsample_scheme();
+        // opt.testing_combined_delete();
+        // opt.test_point_retrival();
     }
 
     return 0;

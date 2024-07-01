@@ -7,17 +7,47 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <map>
 #include <tbb/concurrent_unordered_set.h>
+#include <set>
 #include <unordered_map>
 #include <utility>
+
+namespace
+{
+    template <typename T>
+    Eigen::Matrix<T, 1, Eigen::Dynamic> vox_weight_generator(Eigen::Matrix<T, 1, Eigen::Dynamic> &variances, Eigen::Matrix<T, 1, Eigen::Dynamic> &counts, T size)
+    {
+        auto round_to_nearest = [](T value)
+        { return std::round(value); };
+
+        Eigen::Matrix<T, 1, Eigen::Dynamic> weight;
+        if (variances.sum() <= 0)
+            weight = Eigen::Matrix<T, 1, Eigen::Dynamic>::Ones(1, variances.size()) * (1 / static_cast<T>(variances.size()));
+        else
+        {
+            variances /= variances.sum();
+            counts /= counts.sum();
+
+            weight = 0.5 * (variances + counts);
+            weight /= weight.sum();
+        }
+
+        weight *= size;
+        return weight.unaryExpr(round_to_nearest);
+    }
+}
 
 template <typename T>
 struct VoxelData
 {
     VoxelData() = default;
     void add_info(const Point3dPtr<T> &val);
+
+    void unsafe_add_info(const Point3dPtr<T> &val);
+
     void sampled_points(Point3dPtrVectCC<T> &sampled, T count);
 
     tbb::concurrent_vector<DistancePointPair<T>> points;
+
     RunningStats<T> stats;
     boost::shared_mutex mtx;
 };
@@ -30,11 +60,11 @@ struct DownsampleData
 
     void add_point(const Point3dPtr<T> &point);
 
+    void unsafe_add_point(const Point3dPtr<T> &point);
+
     Point3dPtrVectCC<T> reduced(T count);
 
     std::pair<T, T> total_info();
-
-    static Eigen::Matrix<T, 1, Eigen::Dynamic> weight_generator(Eigen::Matrix<T, 1, Eigen::Dynamic> &variances, Eigen::Matrix<T, 1, Eigen::Dynamic> &counts, T size);
 
     VoxelHMap points;
     Eigen::Matrix<T, 1, Eigen::Dynamic> variances, counts;
@@ -44,13 +74,6 @@ struct DownsampleData
 template <typename T>
 struct Downsample
 {
-    void regular_insert(Point3dPtr<T> &point);
-
-    void clustered_insert(Point3dPtr<T> &point);
-
-    std::map<T, Point3dPtrVectCC<T>> process_clustered(size_t points_size, T dwnsample_ratio);
-
-    Point3dPtrVectCC<T> process_regular(size_t points_size, T dwnsample_ratio);
 
     static Eigen::Matrix<T, 1, Eigen::Dynamic> generate_weight(size_t size, T dwnsample_ratio, std::array<DownsampleData<T>, 8> &o_points);
 

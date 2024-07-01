@@ -51,6 +51,8 @@ public:
 
     Eigen::Matrix<T, 3, 1> get_mean() const;
 
+    Eigen::Matrix<T, 3, 3> get_cov() const;
+
     Eigen::Matrix<T, 3, 1> get_min() const;
 
     Eigen::Matrix<T, 3, 1> center() const;
@@ -124,12 +126,15 @@ private: // function
         const Eigen::Matrix<T, 3, 1> &point, const Eigen::Matrix<T, 3, 1> &min,
         const Eigen::Matrix<T, 3, 1> &max, T range);
 
+    void mean_cov_update(Eigen::Matrix<T, 3, 1> &batch_mean, Eigen::Matrix<T, 3, 3> &batch_cov, size_t batch_count);
+
 private: // attributes
     Eigen::Matrix<T, 3, 1> min, max, mean;
     Eigen::Matrix<T, 3, 3> cov;
     AVector3TVec<T> temp_points;
     size_t num_points;
     bool track_cov = false;
+    bool mean_cov_initialized = false;
     mutable boost::shared_mutex mutex;
 };
 

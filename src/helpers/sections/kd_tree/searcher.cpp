@@ -34,6 +34,9 @@ void SearchRunner<T>::update_search_bucket(BlockPtr<T> &block, T sq_dist)
 {
     if (typ == SearchType::Distribution)
     {
+        if (block->oct->bbox->get_size() < 3)
+            return;
+
         handle_distributive(block, sq_dist);
         return;
     }
@@ -46,6 +49,7 @@ void SearchRunner<T>::handle_distributive(BlockPtr<T> &block, T sq_dist)
 {
     if (blocks.size() < num_nearest || sq_dist < max_range_sq)
     {
+
         blocks.push({sq_dist, block});
         if (blocks.size() > num_nearest)
             blocks.pop();
@@ -82,8 +86,7 @@ void SearchRunner<T>::enqueue_next_distributive(ExplorePriorityType &next_block,
     if (further && not_visited(further->node_rep))
     {
         mean = further->oct->bbox->get_mean();
-        auto fur_check = std::pow(qp[axis] - mean[axis], 2) <= max_range_sq;
-        if (blocks.size() < num_nearest || fur_check)
+        if (blocks.size() < num_nearest || std::pow(qp[axis] - mean[axis], 2) <= max_range_sq)
         {
             auto sq_dist = (mean - qp).squaredNorm();
             next_block.push({sq_dist, further});
@@ -122,6 +125,7 @@ void SearchRunner<T>::enqueue_next_point(ExplorePriorityType &next_block, BlockP
 template <typename T>
 void SearchRunner<T>::enqueue_next(ExplorePriorityType &next_block, BlockPtr<T> &curr)
 {
+
     if (typ == SearchType::Distribution)
     {
         enqueue_next_distributive(next_block, curr);
@@ -148,10 +152,25 @@ void Searcher<T>::explore_tree(SearchRunner<T> &opt)
 
     typename SearchRunner<T>::ExplorePriorityType next_block;
 
-    // starts from anchor point or root
+    // Anchor points to speed up search criteria
     if (auto anchor_point = config->search(opt.node_rep))
-        next_block.emplace(0.0, anchor_point);
+        next_block.emplace(anchor_point->closest_distance(opt.qp), anchor_point);
 
+    T half_voxel = 0.5 * opt.voxel_size;
+    for (int i = 0; i < 8; ++i)
+    {
+        Eigen::Matrix<T, 3, 1> variation = opt.qp;
+        variation.x() += (i & 1) ? half_voxel : -half_voxel;
+        variation.y() += (i & 2) ? half_voxel : -half_voxel;
+        variation.z() += (i & 4) ? half_voxel : -half_voxel;
+
+        // include valid options
+        Eigen::Vector3i ap = Point3d<T>::calc_vox_index(variation, opt.voxel_size);
+        if (auto anchor_point = config->search(ap))
+            next_block.emplace(anchor_point->closest_distance(variation), anchor_point);
+    }
+
+    // include root as backup case
     auto head_point = config->get_root();
     next_block.emplace(head_point->closest_distance(opt.qp), head_point);
 
@@ -173,12 +192,10 @@ void Searcher<T>::explore_tree(SearchRunner<T> &opt)
             sq_dist = (opt.qp - node->oct->bbox->get_mean()).squaredNorm();
 
         // update the result bucket
-        if (sq_dist <= opt.max_range_sq)
-            opt.update_search_bucket(node, sq_dist);
+        opt.update_search_bucket(node, sq_dist);
 
         // enque only when within
-        if (BBoxStatus<T>::Outside != node->point_within_bbox(opt.qp, opt.max_range))
-            opt.enqueue_next(next_block, node);
+        opt.enqueue_next(next_block, node);
     }
 }
 
@@ -239,7 +256,7 @@ std::vector<BlockPointPair<T>> Searcher<T>::get_matched_points_with_block(Search
     if (verbose)
     {
         oss << std::fixed << std::setprecision(4); // Set fixed-point notation and precision
-        oss << "Query Mean: " << Point3d<T>::eig_to_string(opt.qp) << "\n";
+        oss << "\nQuery Mean: " << Point3d<T>::eig_to_string(opt.qp) << "\n";
         oss << "Matched Distribution Mean:\n";
         oss << std::setw(10) << std::left << "Index"
             << std::setw(40) << "Mean"

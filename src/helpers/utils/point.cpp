@@ -161,39 +161,24 @@ std::string Point3d<T>::eig_to_string(const Eigen::Vector3i &point)
 template <typename T>
 Eigen::Vector3i Point3d<T>::calc_vox_index(const Point3d<T>::Ptr &point, T vox_size)
 {
-    // Adjustment to align voxel centers with the desired range.
-    T half_vox_size = vox_size / T(2.0);
-
-    // Adjust point by half voxel size to align with voxel centering.
-    T adj_x = point->x() + half_vox_size;
-    T adj_y = point->y() + half_vox_size;
-    T adj_z = point->z() + half_vox_size;
 
     // Scale the adj coordinates to voxel grid.
     T inv_vox = T(1.0) / vox_size;
     return Eigen::Vector3i(
-        static_cast<int>(std::floor(adj_x * inv_vox)),
-        static_cast<int>(std::floor(adj_y * inv_vox)),
-        static_cast<int>(std::floor(adj_z * inv_vox)));
+        static_cast<int>(point->x() * inv_vox),
+        static_cast<int>(point->y() * inv_vox),
+        static_cast<int>(point->z() * inv_vox));
 }
 
 template <typename T>
 Eigen::Vector3i Point3d<T>::calc_vox_index(const Eigen::Matrix<T, 3, 1> &point, T vox_size)
 {
-    // Adjustment to align voxel centers with the desired range.
-    T half_vox_size = vox_size / T(2.0);
-
-    // Adjust point by half voxel size to align with voxel centering.
-    T adj_x = point.x() + half_vox_size;
-    T adj_y = point.y() + half_vox_size;
-    T adj_z = point.z() + half_vox_size;
-
     // Scale the adj coordinates to voxel grid.
     T inv_vox = T(1.0) / vox_size;
     return Eigen::Vector3i(
-        static_cast<int>(std::floor(adj_x * inv_vox)),
-        static_cast<int>(std::floor(adj_y * inv_vox)),
-        static_cast<int>(std::floor(adj_z * inv_vox)));
+        static_cast<int>(point.x() * inv_vox),
+        static_cast<int>(point.y() * inv_vox),
+        static_cast<int>(point.z() * inv_vox));
 }
 
 template struct Point3d<double>;

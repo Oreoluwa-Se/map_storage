@@ -12,11 +12,11 @@ Testing:
   points_gen_range: 5.0
   delete_radius: 1.0
   delete_within: true
-  search_radius: 1.0
+  search_radius: 2.0
   num_nearest: 5
-  build_size: 50000
+  build_size: 100
   num_incremental_insert: 200
   verbose: true
-  faster_lio_test: false
+  faster_lio_test: true
   iterations_faster_lio_test: 100 # Number of runs for average
   downsample_ratio: 0.5

@@ -72,16 +72,13 @@ void Config<T>::grouping_points(PointContainer &build_points, BlockPtrVecCC<T> &
                 block->oct->split_insert_point(point);
         });
 
-    // flush the remaning points on the worker thread
-    auto voxels_ptr = std::make_shared<BlockPtrVecCC<T>>(voxels);
-    wp->enqueue_task(
-        TaskType::PointInsert,
-        [voxels_ptr]()
+    // batch insert points
+    tbb::parallel_for_each(
+        voxels.begin(), voxels.end(),
+        [&](auto &blk)
         {
-            for (auto &blk : *voxels_ptr)
-                blk->oct->split_batch_insert();
-        },
-        PriorityRank::Super);
+            blk->oct->split_batch_insert();
+        });
 }
 
 template <typename T>

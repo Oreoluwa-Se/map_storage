@@ -36,7 +36,11 @@ public:
 
     SearchRunnerVector<T> knn_search(const Point3dPtrVect<T> &points, size_t num_nearest, T max_range, SearchType typ);
 
+    SearchRunnerVector<T> knn_search(const AVector3TVec<T> &points, size_t num_nearest, T max_range, SearchType typ);
+
     SearchRunnerVector<T> range_search(const Point3dPtrVect<T> &points, T max_range, SearchType typ);
+
+    SearchRunnerVector<T> range_search(const AVector3TVec<T> &points, T max_range, SearchType typ);
 
     // Delete parameters
     void delete_within_points(const Eigen::Matrix<T, 3, 1> &ptd, T range, DeleteType del_type = DeleteType::Spherical);

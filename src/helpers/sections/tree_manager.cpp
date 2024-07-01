@@ -73,6 +73,7 @@ template <typename T>
 SearchRunner<T> PointStorage<T>::knn_search(const Eigen::Matrix<T, 3, 1> &point, size_t num_nearest, T max_range, SearchType typ)
 {
     SearchRunner<T> opt(point, voxel_size, num_nearest, max_range, typ);
+
     if (typ == SearchType::Distribution && !can_use_distribution_search)
         return opt;
 
@@ -116,6 +117,30 @@ SearchRunnerVector<T> PointStorage<T>::knn_search(const Point3dPtrVect<T> &point
 }
 
 template <typename T>
+SearchRunnerVector<T> PointStorage<T>::knn_search(const AVector3TVec<T> &points, size_t num_nearest, T max_range, SearchType typ)
+{
+    SearchRunnerVector<T> result;
+
+    if (typ == SearchType::Distribution && !can_use_distribution_search)
+        return result;
+
+    result.reserve(points.size());
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, points.size()),
+        [&](const tbb::blocked_range<size_t> &range)
+        {
+            for (size_t i = range.begin(); i != range.end(); ++i)
+            {
+                SearchRunner<T> opt(points[i], voxel_size, num_nearest, max_range, typ);
+                searcher->explore_tree(opt);
+                result.emplace_back(opt);
+            }
+        });
+
+    return result;
+}
+
+template <typename T>
 SearchRunnerVector<T> PointStorage<T>::range_search(const Point3dPtrVect<T> &points, T max_range, SearchType typ)
 {
     SearchRunnerVector<T> result;
@@ -132,6 +157,31 @@ SearchRunnerVector<T> PointStorage<T>::range_search(const Point3dPtrVect<T> &poi
             for (size_t i = range.begin(); i != range.end(); ++i)
             {
                 SearchRunner<T> opt(points[i]->point, voxel_size, num_nearest, max_range, typ);
+                searcher->explore_tree(opt);
+                result.emplace_back(opt);
+            }
+        });
+
+    return result;
+}
+
+template <typename T>
+SearchRunnerVector<T> PointStorage<T>::range_search(const AVector3TVec<T> &points, T max_range, SearchType typ)
+{
+    SearchRunnerVector<T> result;
+    if (typ == SearchType::Distribution && !can_use_distribution_search)
+        return result;
+
+    result.reserve(points.size());
+    size_t num_nearest = std::numeric_limits<size_t>::max();
+
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, points.size()),
+        [&](tbb::blocked_range<size_t> &range)
+        {
+            for (size_t i = range.begin(); i != range.end(); ++i)
+            {
+                SearchRunner<T> opt(points[i], voxel_size, num_nearest, max_range, typ);
                 searcher->explore_tree(opt);
                 result.emplace_back(opt);
             }
