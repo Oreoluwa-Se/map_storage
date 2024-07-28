@@ -33,6 +33,7 @@ struct TestParams
     bool verbose = false;
     bool delete_within = true;
     size_t iterations_faster_lio_test = 100;
+    bool testing_isr = false;
     T downsample_ratio = 0.5;
 };
 
@@ -75,10 +76,13 @@ struct RunFunctions
 
     void test_point_retrival();
 
+    void testing_incremental();
+
 private:
-    T voxel_size;
+    std::uniform_real_distribution<T> dis;
     std::mt19937 gen;
     TestParams<T> tp;
+    T voxel_size;
 };
 
 #endif

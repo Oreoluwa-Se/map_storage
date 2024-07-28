@@ -65,6 +65,8 @@ struct SubtreeAgg
 template <typename T>
 class Block : public std::enable_shared_from_this<Block<T>>
 {
+    static std::atomic<size_t> block_counter; // block id number
+
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     using Ptr = std::shared_ptr<Block<T>>;
@@ -154,6 +156,7 @@ public:
     OctreePtr<T> oct = nullptr;        // stores the points in current voxel
     Eigen::Vector3i node_rep;          // node voxel number [integer]
     Eigen::Matrix<T, 3, 1> node_rep_d; // node voxel number [decimal]
+    size_t block_id;
     mutable boost::shared_mutex mutex;
 
 private:
@@ -174,6 +177,7 @@ private:
     Eigen::Matrix<T, 3, 1> v_min, v_max; // voxel boundaries
     T voxel_size;
     int max_vox_size;
+
     size_t tree_size = 1, num_deleted = 0; // number of voxels within subtree from node
     int axis = -1;
     bool require_update = true;

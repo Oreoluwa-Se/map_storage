@@ -127,16 +127,13 @@ void Point3d<T>::normalize() { point.normalize(); }
 template <typename T>
 int Point3d<T>::sign_cardinality(const Eigen::Matrix<T, 3, 1> &vec)
 {
+    // Initialize cardinality with 0
     int cardinality = 0;
 
-    // Determine the sign of each element and combine into a unique number
-    for (int i = 0; i < 3; ++i)
-    {
-        int sign = (vec[i] >= 0) ? 1 : 0;
-
-        // Combine the sign values to get a unique number in range 0-7
-        cardinality = (cardinality << 1) | sign;
-    }
+    // Determine the sign of each element and add weighted values
+    cardinality += (vec[0] >= 0 ? 1 : 0) * 1; // 2^0
+    cardinality += (vec[1] >= 0 ? 1 : 0) * 2; // 2^1
+    cardinality += (vec[2] >= 0 ? 1 : 0) * 4; // 2^2
 
     return cardinality;
 }

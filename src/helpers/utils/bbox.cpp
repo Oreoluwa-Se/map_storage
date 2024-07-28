@@ -276,6 +276,7 @@ void BBox<T>::unsafe_min_max_update(const Eigen::Matrix<T, 3, 1> &point)
     else
         ++num_points;
 }
+
 template <typename T>
 void BBox<T>::update(const Eigen::Matrix<T, 3, 1> &point)
 {
@@ -429,6 +430,7 @@ void BBox<T>::update(const Point3dPtrVectCC<T> &points)
         boost::unique_lock<boost::shared_mutex> lock(mutex);
         for (const auto &point : points)
         {
+
             batch_mean.noalias() += point->point;
             min = min.cwiseMin(point->point);
             max = max.cwiseMax(point->point);

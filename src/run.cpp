@@ -27,12 +27,15 @@ RunFunctions<T>::RunFunctions(bool use_config)
         set_param(tp.verbose, test_params["verbose"]);
         set_param(tp.iterations_faster_lio_test, test_params["iterations_faster_lio_test"]);
         set_param(tp.downsample_ratio, test_params["downsample_ratio"]);
+        set_param(tp.testing_isr, test_params["testing_insert_search_run"]);
     }
     // base parameters
 
     std::random_device rd;
     std::mt19937 gen_2(rd());
     gen = gen_2;
+
+    dis = std::uniform_real_distribution<T>(-tp.points_gen_range / 2.0, tp.points_gen_range / 2.0);
 }
 
 // Creators
@@ -421,6 +424,37 @@ void RunFunctions<T>::testing_downsample_scheme()
 }
 
 template <typename T>
+void RunFunctions<T>::testing_incremental()
+{
+    PointStoragePtr<T> node = std::make_shared<PointStorage<T>>(
+        tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
+        tp.track_stats, tp.init_map_size, tp.voxel_size);
+
+    auto points = create_random_points(100, tp.points_gen_range);
+    point_storage_run(node, points);
+
+    for (size_t iter = 0; iter < tp.iterations_faster_lio_test; ++iter)
+    {
+        points = create_random_points(tp.num_incremental_insert, tp.points_gen_range);
+        std::cout << "Total Created Points size: " << points.size() << std::endl;
+        node->insert(points);
+
+        // testing range search
+
+        Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
+        points = create_random_points(5, tp.points_gen_range);
+
+        // knn search stuff
+        T s_range = tp.points_gen_range;
+        auto res = node->knn_search(points, tp.num_nearest, s_range, SearchType::Point);
+    }
+
+    std::cout << "End of algorithm" << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    node->print_tree();
+}
+
+template <typename T>
 void RunFunctions<T>::faster_lio_trial(size_t N)
 {
     T tot_insert_dur = 0;
@@ -450,7 +484,7 @@ void RunFunctions<T>::faster_lio_trial(size_t N)
         }
 
         {
-            std::uniform_real_distribution<T> dis(-tp.points_gen_range / 2.0, tp.points_gen_range / 2.0);
+
             Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
             points = create_random_points(5, tp.points_gen_range);
 
@@ -506,7 +540,6 @@ void RunFunctions<T>::testing_combined_delete()
     auto points = create_random_points(tp.build_size, tp.points_gen_range);
     point_storage_run(node, points);
 
-    std::uniform_real_distribution<T> dis(-tp.points_gen_range / 2.0, tp.points_gen_range / 2.0);
     Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
 
     // deleting stuff

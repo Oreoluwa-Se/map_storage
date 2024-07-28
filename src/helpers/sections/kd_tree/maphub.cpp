@@ -54,9 +54,12 @@ void Config<T>::set_support_info(PoolPtr &wp_ptr)
 
 template <typename T>
 template <typename PointContainer>
-void Config<T>::grouping_points(PointContainer &build_points, BlockPtrVecCC<T> &voxels)
+void Config<T>::grouping_points(PointContainer &build_points, BlockPtrVecCC<T> &new_voxels)
 {
-    voxels.reserve(0.5 * build_points.size());
+    new_voxels.reserve(0.5 * build_points.size());
+    tbb::concurrent_unordered_set<size_t> id_track;
+    BlockPtrVecCC<T> blks_to_flush;
+    blks_to_flush.reserve(build_points.size());
 
     tbb::parallel_for_each(
         build_points.begin(), build_points.end(),
@@ -65,16 +68,19 @@ void Config<T>::grouping_points(PointContainer &build_points, BlockPtrVecCC<T> &
             BlockPtr<T> block = nullptr;
 
             if (insert_or_create_block(point->vox, block))
-                voxels.emplace_back(block);
+                new_voxels.emplace_back(block);
 
             // insert into voxel
             if (block->point_insert_clause())
                 block->oct->split_insert_point(point);
+
+            if (id_track.insert(block->block_id).second)
+                blks_to_flush.emplace_back(block);
         });
 
     // batch insert points
     tbb::parallel_for_each(
-        voxels.begin(), voxels.end(),
+        blks_to_flush.begin(), blks_to_flush.end(),
         [&](auto &blk)
         {
             blk->oct->split_batch_insert();

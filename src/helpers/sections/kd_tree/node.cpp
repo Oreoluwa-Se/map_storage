@@ -5,11 +5,14 @@
 #include <tbb/parallel_invoke.h>
 #include <tuple>
 
+template <typename T>
+std::atomic<size_t> Block<T>::block_counter{0};
+
 // Individual blocks
 template <typename T>
 Block<T>::Block(const Eigen::Vector3i &value, int max_vox_size, size_t max_points_oct_layer, T voxel_size, bool track_stats)
     : oct(std::make_shared<Octree<T>>(max_points_oct_layer, track_stats)),
-      node_rep(value), node_rep_d(value.cast<T>()),
+      node_rep(value), node_rep_d(value.cast<T>()), block_id(++block_counter),
       v_min(node_rep_d - Eigen::Matrix<T, 3, 1>::Constant(voxel_size * 0.5)),
       v_max(node_rep_d + Eigen::Matrix<T, 3, 1>::Constant(voxel_size * 0.5)),
       voxel_size(voxel_size), max_vox_size(max_vox_size) {}
@@ -621,8 +624,6 @@ void Block<T>::detach()
         boost::unique_lock<boost::shared_mutex> lock(logger_mutex);
         logger = nullptr;
     }
-
-    oct = nullptr;
 }
 
 template <typename T>

@@ -22,8 +22,8 @@ template <typename T>
 void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
 {
     alt_size.fetch_add(1, std::memory_order_release);
-
-    { // if inserting just add it to list of nodes to insert
+    {
+        // if inserting just add it to list of nodes to insert
         boost::shared_lock<boost::shared_mutex> lock_s(mutexes[point->octant_key]);
         if (inserting_t[point->octant_key])
         {
@@ -39,11 +39,11 @@ void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
         return;
     }
 
-    if (!roots[point->octant_key]) // create coordinate
-        roots[point->octant_key] = std::make_shared<OctreeNode<T>>(max_points, false);
-
     inserting_t[point->octant_key] = true;
     lock.unlock();
+
+    if (!roots[point->octant_key]) // create coordinate
+        roots[point->octant_key] = std::make_shared<OctreeNode<T>>(max_points, false);
 
     // insert
     bbox->update(point->point);
@@ -75,11 +75,13 @@ void Octree<T>::split_batch_insert()
 template <typename T>
 void Octree<T>::radius_search(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, size_t k)
 {
+
     if (BBox<T>::Status::Outside == bbox->point_within_bbox(qp, range))
         return;
 
     int sign_c = Point3d<T>::sign_cardinality(qp);
     int curr_idx = sign_c;
+
     do
     {
         if (roots[curr_idx])
