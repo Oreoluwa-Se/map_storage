@@ -46,7 +46,7 @@ Dependencies 2-5 will be installed via CMake if not already installed. Ensure to
 
 ```sh
 chmod +x thirdparty/install_deps.sh
-chmod +x ./run.sh
+chmod +x ./build_run.sh
 ```
 
 ## Compilation and Running the Program
