@@ -71,11 +71,13 @@ void Config<T>::grouping_points(PointContainer &build_points, BlockPtrVecCC<T> &
                 new_voxels.emplace_back(block);
 
             // insert into voxel
-            if (block->point_insert_clause())
+            if (block->oct->can_insert_new_point())
+            {
                 block->oct->split_insert_point(point);
 
-            if (id_track.insert(block->block_id).second)
-                blks_to_flush.emplace_back(block);
+                if (id_track.insert(block->block_id).second)
+                    blks_to_flush.emplace_back(block);
+            }
         });
 
     // batch insert points

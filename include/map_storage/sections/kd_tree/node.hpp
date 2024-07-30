@@ -109,8 +109,6 @@ public:
 
     bool is_leaf();
 
-    bool point_insert_clause();
-
     std::string format_block_info(bool is_left, size_t depth);
 
     std::string print_subtree();

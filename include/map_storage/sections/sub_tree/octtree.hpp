@@ -14,9 +14,9 @@ class Octree
 public:
     using Ptr = std::shared_ptr<Octree<T>>;
 
-    explicit Octree(size_t max_points = 30, bool track_stats = false);
+    explicit Octree(size_t max_points = 30, bool track_stats = false, int total_allowed_points = -1.0);
 
-    Octree(const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, size_t max_points = 30, bool track_stats = false);
+    Octree(const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, size_t max_points = 30, bool track_stats = false, int total_allowed_points = -1.0);
 
     void split_insert_point(const Point3dPtr<T> &point);
 
@@ -34,6 +34,8 @@ public:
 
     void clear();
 
+    bool can_insert_new_point();
+
 public:
     BBoxPtr<T> bbox = nullptr;
     std::atomic<size_t> alt_size{0};
@@ -50,6 +52,7 @@ private:
     std::array<boost::shared_mutex, 8> mutexes;
     Point3dPtrVectCC<T> to_flush;
     std::array<Point3dPtrVectCC<T>, 8> to_flushs;
+    int total_allowed_points;
 };
 
 template <typename T>

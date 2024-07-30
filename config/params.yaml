@@ -1,6 +1,6 @@
 # Tree building and maintenance parameters
 Build:
-  max_points_in_vox: -1 # -1 means we don't limit the number
+  max_points_in_vox: 30 # -1 means we don't limit the number
   max_points_in_oct_layer: 30 # Maximum number of points stored in each level for an octant
   imbal_factor: 0.6 # Size discrepancy between left and right tree to trigger rebalancing
   del_nodes_factor: 0.5 # Maximum ratio between valid and invalid nodes before rebalancing
@@ -19,8 +19,8 @@ Testing:
   downsample_ratio: 0.5
 
   # Implemeted Tests for visualization
-  num_incremental_insert: 30
-  iterations_faster_lio_test: 1700 # Number of iterations
+  num_incremental_insert: 200
+  iterations_faster_lio_test: 50 # Number of iterations
   testing_insert_search_run: true # Test insert and search for a number of iterations
   faster_lio_test: false # mimics the test found in faster_lio paper
   basic_test: false # basic insert, search, downsample, retrival

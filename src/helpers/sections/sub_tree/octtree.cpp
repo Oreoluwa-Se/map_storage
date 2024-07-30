@@ -1,14 +1,14 @@
 #include "map_storage/sections/sub_tree/octtree.hpp"
 
 template <typename T>
-Octree<T>::Octree(size_t max_points, bool track_stats)
+Octree<T>::Octree(size_t max_points, bool track_stats, int total_allowed_points)
     : bbox(std::make_shared<BBox<T>>(track_stats)),
-      max_points(max_points), is_inserting(false), track_stats(track_stats) {}
+      max_points(max_points), is_inserting(false), track_stats(track_stats), total_allowed_points(total_allowed_points) {}
 
 template <typename T>
-Octree<T>::Octree(const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, size_t max_points, bool track_stats)
+Octree<T>::Octree(const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, size_t max_points, bool track_stats, int total_allowed_points)
     : bbox(std::make_shared<BBox<T>>(min, max, track_stats)),
-      max_points(max_points), is_inserting(false), track_stats(track_stats) {}
+      max_points(max_points), is_inserting(false), track_stats(track_stats), total_allowed_points(total_allowed_points) {}
 
 template <typename T>
 void Octree<T>::clear()
@@ -19,9 +19,22 @@ void Octree<T>::clear()
 }
 
 template <typename T>
+bool Octree<T>::can_insert_new_point()
+{
+    if (total_allowed_points == -1.0)
+        return true;
+
+    return alt_size.load(std::memory_order_acquire) <= total_allowed_points;
+}
+
+template <typename T>
 void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
 {
-    alt_size.fetch_add(1, std::memory_order_release);
+    if (can_insert_new_point())
+        alt_size.fetch_add(1, std::memory_order_release);
+    else
+        return;
+
     {
         // if inserting just add it to list of nodes to insert
         boost::shared_lock<boost::shared_mutex> lock_s(mutexes[point->octant_key]);
