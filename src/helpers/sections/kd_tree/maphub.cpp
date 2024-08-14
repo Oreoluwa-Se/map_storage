@@ -104,11 +104,13 @@ void Config<T>::replace_voxel(BlockPtr<T> &new_blk)
 {
     typename BlockPtrMap<T>::accessor loc;
     if (block_map.find(loc, new_blk->node_rep))
-    {
-        // replace when not pointing to similar objects
-        if (loc->second != new_blk)
-            loc->second = new_blk;
-    }
+        loc->second = new_blk;
+}
+
+template <typename T>
+void Config<T>::erase(BlockPtr<T> &new_blk)
+{
+    block_map.erase(new_blk->node_rep);
 }
 
 template <typename T>
@@ -134,6 +136,12 @@ std::pair<size_t, VisualizationPointStorage<T>> Config<T>::map_points()
         });
 
     return {total_size.load(), points_per_voxel};
+}
+
+template <typename T>
+size_t Config<T>::get_voxel_map_size()
+{
+    return block_map.size();
 }
 
 // setting templates for compiler

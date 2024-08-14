@@ -54,9 +54,10 @@ void Deleter<T>::handle_collapse(BlockPtr<T> c_block, DeleteCondition cond)
         else
         {
             // ....... clearing node stuff .......
-            node->oct->clear(); // clear oct nodes
-            node->oct.reset();  // clear octree
-            node.reset();       // clear block
+            config->erase(node); // remove from tracking list
+            node->oct->clear();  // clear oct nodes
+            node->oct.reset();   // clear octree
+            node.reset();        // clear block
         }
     }
 }

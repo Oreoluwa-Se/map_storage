@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     }
 
     // basic test
-    set_param(test_val, test_params["faster_lio_test"]);
+    set_param(test_val, test_params["basic_test"]);
     if (test_val)
     {
         opt.testing_insert_schemes();

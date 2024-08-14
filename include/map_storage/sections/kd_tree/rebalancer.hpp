@@ -22,11 +22,9 @@ struct Rebalancer
     void run_algo(BlockPtr<T> blk);
 
 private:
-    BlockPtr<T> rebuild_phase(BlockPtr<T> &blk, BlockPtrVecCC<T> &cloned_blks, BlockPtrVecCC<T> &to_delete);
-
     void flatten(BlockPtr<T> &blk, BlockPtrVecCC<T> &cloned_blks, BlockPtrVecCC<T> &to_delete);
 
-    void run_operations(OperationLog<T> &log, BlockPtr<T> &new_lead);
+    void run_operations(BlockPtr<T> &op_block, BlockPtr<T> &new_lead);
 
     void reattach_block(BlockPtr<T> &old, BlockPtr<T> &new_b);
 

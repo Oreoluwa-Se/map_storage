@@ -22,8 +22,7 @@ void Rebalancer<T>::sequencer(BlockPtrVecCC<T> &scapegoats, std::map<size_t, Blo
             continue;
 
         // This check implies no current rebuilding operation ongoing
-        if (!blk->rebal_status())
-            run_seq[blk->get_tree_size()].emplace_back(blk);
+        run_seq[blk->get_tree_size()].emplace_back(blk);
     }
 }
 
@@ -36,6 +35,9 @@ void Rebalancer<T>::flatten(BlockPtr<T> &blk, BlockPtrVecCC<T> &cloned_blks, Blo
     std::vector<BlockPtr<T>> visit_stack;
     visit_stack.push_back(blk);
 
+    // trigger to start logging operations
+    blk->set_status(NodeStatus::Rebalancing);
+
     while (!visit_stack.empty())
     {
         auto node = visit_stack.back();
@@ -44,13 +46,19 @@ void Rebalancer<T>::flatten(BlockPtr<T> &blk, BlockPtrVecCC<T> &cloned_blks, Blo
         if (!node || node->cloned_status())
             continue;
 
-        to_delete.push_back(node); // list of blocks to be deleted
         if (NodeStatus::Deleted != node->get_status())
         {
             auto n_block = node->clone_block();
             n_block->set_aux_connection(node, Connection::Previous);
+
+            // for updating tree and tracking stuff
             cloned_blks.emplace_back(n_block);
         }
+        else
+            config->erase(node); // removes element from the tracking stuff
+
+        // list of blocks to be deleted
+        to_delete.push_back(node);
 
         // Check if it is a leaf node.
         BlockPtr<T> left_blk, right_blk;
@@ -66,38 +74,28 @@ void Rebalancer<T>::flatten(BlockPtr<T> &blk, BlockPtrVecCC<T> &cloned_blks, Blo
 }
 
 template <typename T>
-BlockPtr<T> Rebalancer<T>::rebuild_phase(BlockPtr<T> &blk, BlockPtrVecCC<T> &cloned_blks, BlockPtrVecCC<T> &to_delete)
+void Rebalancer<T>::run_operations(BlockPtr<T> &op_block, BlockPtr<T> &new_lead)
 {
-    // rebuild the thing from builder
-    flatten(blk, cloned_blks, to_delete);
-    return builder->rebuild(cloned_blks);
-}
+    auto logger = op_block->get_logger();
+    if (!logger)
+        return;
 
-template <typename T>
-void Rebalancer<T>::run_operations(OperationLog<T> &log, BlockPtr<T> &new_lead)
-{
-    for (auto &curr_op : log)
+    auto curr_op = logger->get_operations();
+    while (curr_op.second)
     {
         // complete insert operation
         if (curr_op.first == OperationType::Insert)
         {
             if (auto ins_ptr = InsertOp<T>::cast(curr_op.second))
             {
-                auto blk = config->search(ins_ptr->vox_to_insert);
-                auto status = blk->get_status();
-
-                // not connected blocks means deleted
-                if (status == NodeStatus::Deleted)
-                    continue;
-
-                if (NodeStatus::Connected == status)
+                if (auto blk = config->search(ins_ptr->vox_to_insert))
                 {
-                    if (blk->cloned_status())
-                        continue; // at this stage it's already been cloned
-                    else
-                        blk = blk->clone_block();
+                    if (blk->cloned_status() || NodeStatus::Connected != blk->get_status())
+                        continue;
 
-                    inserter->insertion_cont(new_lead, blk, ins_ptr->stats);
+                    auto n_blk = blk->clone_block();
+                    inserter->insertion_cont(new_lead, n_blk, ins_ptr->stats);
+                    config->replace_voxel(n_blk);
                 }
             }
         }
@@ -108,6 +106,9 @@ void Rebalancer<T>::run_operations(OperationLog<T> &log, BlockPtr<T> &new_lead)
             if (auto del_ptr = DeleteOp<T>::cast(curr_op.second))
                 deleter->range_delete(new_lead, del_ptr->point, del_ptr->range, del_ptr->cond, del_ptr->del_type);
         }
+
+        // next viable operation
+        curr_op = logger->get_operations();
     }
 }
 
@@ -116,14 +117,7 @@ void Rebalancer<T>::reattach_block(BlockPtr<T> &old, BlockPtr<T> &new_lead)
 {
     if (auto parent = old->get_aux_connection(Connection::Parent))
     {
-        auto left_child = parent->get_child(Connection::Left);
-        if (left_child && left_child->node_rep == old->node_rep)
-        {
-            parent->set_child(new_lead, Connection::Left);
-        }
-        else
-            parent->set_child(new_lead, Connection::Right);
-
+        parent->swap_locations(old, new_lead);
         new_lead->set_aux_connection(parent, Connection::Parent);
     }
     else
@@ -140,47 +134,27 @@ void Rebalancer<T>::run_algo(BlockPtr<T> blk)
     if (blk->cloned_status())
         return;
 
-    blk->set_status(NodeStatus::Rebalancing);
-
     // rebuild and get new head
     BlockPtrVecCC<T> cloned, to_delete;
-    if (auto new_lead = rebuild_phase(blk, cloned, to_delete))
+    flatten(blk, cloned, to_delete);
+    if (auto new_lead = builder->rebuild(cloned))
     {
-        // run first set of operations
-        if (auto logger = blk->get_logger())
-        {
-            auto log = logger->get_operations();
-            if (!log.empty())
-                run_operations(log, new_lead);
-        }
+        // Run preliminary operations that have been logged
+        run_operations(blk, new_lead);
+        blk->set_aux_connection(new_lead, Connection::Remap);
 
-        // Remapping previous to current elements
-        for (auto &c_blk : cloned)
-        {
-            config->replace_voxel(c_blk);
-            if (auto sp = c_blk->get_aux_connection(Connection::Previous))
-                sp->set_aux_connection(new_lead, Connection::Remap);
-        }
+        for (size_t idx = 0; idx < cloned.size(); ++idx)
+            config->replace_voxel(cloned[idx]);
 
-        // re-connecting
+        // run final dangling operations
+        run_operations(blk, new_lead);
+
+        // Re-atach block to main
         reattach_block(blk, new_lead);
-
-        // perform outstanding operations
-        if (auto logger = blk->get_logger())
-        {
-            while (true)
-            {
-                auto log = logger->get_operations();
-                if (log.empty())
-                    break;
-                // run operations
-                run_operations(log, new_lead);
-            }
-        }
-
-        if (!to_delete.empty())
-            enqueue_block_delete(to_delete);
     }
+
+    if (!to_delete.empty())
+        enqueue_block_delete(to_delete);
 }
 
 template <typename T>

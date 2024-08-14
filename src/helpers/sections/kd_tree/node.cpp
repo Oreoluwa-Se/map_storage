@@ -294,7 +294,7 @@ std::string Block<T>::print_subtree()
 
     std::ostringstream tree_output;
     size_t total_points_size = 0;
-
+    size_t total_nodes = 0;
     while (!stack.empty())
     {
         auto point_depth_pair = stack.back();
@@ -310,7 +310,10 @@ std::string Block<T>::print_subtree()
         // Add formatted block info.
         tree_output << point->format_block_info(is_left, depth) << "\n";
         if (!point->check_attributes(BoolChecks::Deleted))
+        {
             total_points_size += point->oct->bbox->get_size();
+            ++total_nodes;
+        }
 
         // Add children to the stack.
         if (auto sp = point->get_child(Connection::Right))
@@ -322,7 +325,7 @@ std::string Block<T>::print_subtree()
 
     std::ostringstream out;
     out << "Number of points in map: " << total_points_size << "\n";
-    out << "Number of current voxels: " << get_tree_size() << std::endl;
+    out << "Number of current voxels: " << total_nodes << std::endl;
     out << " =========================== " << std::endl;
     out << tree_output.str();
 
@@ -391,37 +394,60 @@ bool Block<T>::go_left(const Ptr &comp_block, const RunningStats<T> &c_stats)
 }
 
 template <typename T>
+void Block<T>::swap_locations(typename Block<T>::Ptr &comp_block, typename Block<T>::Ptr &to_swap)
+{
+    boost::unique_lock<boost::shared_mutex> lock_l(left_mutex, boost::defer_lock);
+    boost::unique_lock<boost::shared_mutex> lock_r(right_mutex, boost::defer_lock);
+    boost::lock(lock_l, lock_r);
+
+    if (left && left->node_rep == comp_block->node_rep)
+        left = to_swap;
+    else if (right && right->node_rep == comp_block->node_rep)
+        right = to_swap;
+    else
+        throw std::logic_error("No matching block found to swap locations.");
+}
+
+template <typename T>
+void Block<T>::voxel_increment_info_update(typename Block<T>::Ptr &new_block)
+{
+    // increment the tree size and update boundary information
+    boost::unique_lock<boost::shared_mutex> lock(mutex);
+    v_min = v_min.cwiseMin(new_block->node_rep_d);
+    v_max = v_max.cwiseMax(new_block->node_rep_d);
+    ++tree_size;
+}
+
+template <typename T>
 typename Block<T>::Ptr Block<T>::insert_or_move(typename Block<T>::Ptr &new_block, const RunningStats<T> &c_stats)
 {
-    {
-        // increment the tree size and update boundary information
-        boost::unique_lock<boost::shared_mutex> lock(mutex);
-        v_min = v_min.cwiseMin(new_block->node_rep_d);
-        v_max = v_max.cwiseMax(new_block->node_rep_d);
-        ++tree_size;
-    }
-
     // find direction and assign axis if needed
-    auto next_node = go_left(new_block, c_stats) ? Connection::Left : Connection::Right;
-    if (auto sp = get_child(next_node))
-        return sp;
-    {
-        auto &cmtx = (next_node == Connection::Left) ? left_mutex : right_mutex;
-        boost::unique_lock<boost::shared_mutex> lock(cmtx);
-        auto &sp = (next_node == Connection::Left) ? left : right;
-        if (sp) // double check.. if already inserted
-            return sp;
+    voxel_increment_info_update(new_block);
 
-        // here means we assign new block
-        sp = new_block;
+    auto next_dir = go_left(new_block, c_stats) ? Connection::Left : Connection::Right;
+    auto &cmtx = (next_dir == Connection::Left) ? left_mutex : right_mutex;
+
+    boost::upgrade_lock<boost::shared_mutex> lock(cmtx);
+    {
+        auto &ptr = (next_dir == Connection::Left) ? left : right;
+        if (ptr)
+        {
+            log_insert(c_stats, new_block->node_rep);
+            return ptr;
+        }
     }
 
-    // make updates before returning
-    auto c_block = this->shared_from_this();
-    new_block->set_aux_connection(c_block, Connection::Parent);
-    new_block->set_status(NodeStatus::Connected);
+    boost::upgrade_to_unique_lock<boost::shared_mutex> u_lock(lock);
+    auto &ptr = (next_dir == Connection::Left) ? left : right;
+    if (!ptr)
+    {
+        ptr = new_block;
+        log_insert(c_stats, new_block->node_rep);
+        return nullptr;
+    }
 
-    return nullptr;
+    log_insert(c_stats, new_block->node_rep);
+    return ptr;
 }
 
 template <typename T>
@@ -476,9 +502,15 @@ bool Block<T>::scapegoat_check(const T &imb_factor, const T &del_imb_factor)
         c_num_invalid = static_cast<T>(num_deleted);
     }
 
-    // check number of invalid nodes
-    if (c_num_invalid > del_imb_factor * c_tree_size)
-        return true;
+    if (del_imb_factor != 1.0)
+    {
+        // check number of invalid nodes
+        if (c_num_invalid > del_imb_factor * c_tree_size)
+            return true;
+    }
+
+    if (imb_factor == 1.0)
+        return false; // skip imbalance factor
 
     const T left_size = left_blk ? static_cast<T>(left->get_tree_size()) : 0.0;
     const T right_size = right_blk ? static_cast<T>(right->get_tree_size()) : 0.0;
@@ -541,29 +573,14 @@ std::string Block<T>::bbox_info_to_string()
 }
 // ....................... Logger Operations .......................
 template <typename T>
-typename Block<T>::Ptr Block<T>::log_insert(const RunningStats<T> &c_stats, const Eigen::Vector3i &n_block)
+void Block<T>::log_insert(const RunningStats<T> &c_stats, const Eigen::Vector3i &n_block)
 {
-    // if point has already been remapped just move to new location
-    if (auto new_point = get_aux_connection(Connection::Remap))
-        return new_point;
-
-    {
-        boost::shared_lock<boost::shared_mutex> lock(logger_mutex);
-        if (logger)
-        {
-            logger->log_insert(c_stats, n_block);
-            return nullptr;
-        }
-    }
-
-    boost::unique_lock<boost::shared_mutex> lock(logger_mutex);
-    if (!logger)
-        logger = std::make_shared<OperationLogger<T>>();
+    if (get_status() != NodeStatus::Rebalancing)
+        return;
 
     // Log the insert operation. At this point, logger is guaranteed to exist.
+    auto logger = get_logger(true);
     logger->log_insert(c_stats, n_block);
-
-    return nullptr;
 }
 
 template <typename T>
@@ -586,9 +603,18 @@ void Block<T>::log_delete(const Eigen::Matrix<T, 3, 1> &point, T range, DeleteCo
 }
 
 template <typename T>
-OperationLoggerPtr<T> Block<T>::get_logger()
+OperationLoggerPtr<T> Block<T>::get_logger(bool create)
 {
-    boost::shared_lock<boost::shared_mutex> lock(logger_mutex);
+    {
+        boost::shared_lock<boost::shared_mutex> lock(logger_mutex);
+        if (logger || !create)
+            return logger;
+    }
+
+    boost::unique_lock<boost::shared_mutex> lock(logger_mutex);
+    if (!logger)
+        logger = std::make_shared<OperationLogger<T>>();
+
     return logger;
 }
 
@@ -606,12 +632,6 @@ void Block<T>::detach()
     }
 
     {
-        boost::unique_lock<boost::shared_mutex> lock(wconnect_mutex);
-        parent.reset();
-        re_map.reset();
-    }
-
-    {
         boost::unique_lock<boost::shared_mutex> lock(logger_mutex);
         logger = nullptr;
     }
@@ -621,6 +641,7 @@ template <typename T>
 typename Block<T>::Ptr Block<T>::clone_block()
 {
     auto blk = std::make_shared<Block<T>>();
+
     // base information
     blk->node_rep = node_rep;
     blk->node_rep_d = node_rep_d;
@@ -645,13 +666,6 @@ bool Block<T>::cloned_status()
 {
     boost::shared_lock<boost::shared_mutex> lock(status_mutex);
     return c_status == ClonedStatus::Yes;
-}
-
-template <typename T>
-bool Block<T>::rebal_status()
-{
-    boost::shared_lock<boost::shared_mutex> lock(status_mutex);
-    return status == NodeStatus::Rebalancing;
 }
 
 template class Block<double>;

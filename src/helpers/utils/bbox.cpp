@@ -6,19 +6,19 @@ BBox<T>::BBox(bool _track_cov)
     : min(Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::max()),
       max(Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::lowest()),
       mean(Eigen::Matrix<T, 3, 1>::Zero()),
-      cov(Eigen::Matrix<T, 3, 3>::Identity() * 1e9),
+      cov(Eigen::Matrix<T, 3, 3>::Identity() * std::numeric_limits<T>::max()),
       num_points(0), track_cov(_track_cov) {}
 
 template <typename T>
 BBox<T>::BBox(const Eigen::Matrix<T, 3, 1> &point, bool _track_cov)
     : min(point), max(point), mean(Eigen::Matrix<T, 3, 1>::Zero()),
-      cov(Eigen::Matrix<T, 3, 3>::Identity() * 1e9),
+      cov(Eigen::Matrix<T, 3, 3>::Identity() * std::numeric_limits<T>::max()),
       num_points(0), track_cov(_track_cov) {}
 
 template <typename T>
 BBox<T>::BBox(const Eigen::Matrix<T, 3, 1> &min_point, const Eigen::Matrix<T, 3, 1> &max_point, bool _track_cov)
     : min(min_point), max(min_point), mean(Eigen::Matrix<T, 3, 1>::Zero()),
-      cov(Eigen::Matrix<T, 3, 3>::Identity() * 1e9),
+      cov(Eigen::Matrix<T, 3, 3>::Identity() * std::numeric_limits<T>::max()),
       num_points(0), track_cov(_track_cov)
 {
     min = min.cwiseMin(max_point);

@@ -30,11 +30,10 @@ bool Octree<T>::can_insert_new_point()
 template <typename T>
 void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
 {
-    if (can_insert_new_point())
-        alt_size.fetch_add(1, std::memory_order_release);
-    else
+    if (!can_insert_new_point())
         return;
 
+    alt_size.fetch_add(1, std::memory_order_release);
     {
         // if inserting just add it to list of nodes to insert
         boost::shared_lock<boost::shared_mutex> lock_s(mutexes[point->octant_key]);
@@ -62,7 +61,6 @@ void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
     bbox->update(point->point);
     roots[point->octant_key]->insert_point(point);
 
-    // perform batch updates
     lock.lock();
     inserting_t[point->octant_key] = false;
 }
@@ -88,7 +86,6 @@ void Octree<T>::split_batch_insert()
 template <typename T>
 void Octree<T>::radius_search(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, size_t k)
 {
-
     if (BBox<T>::Status::Outside == bbox->point_within_bbox(qp, range))
         return;
 

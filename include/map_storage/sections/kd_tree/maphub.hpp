@@ -36,7 +36,11 @@ struct Config
 
     void replace_voxel(BlockPtr<T> &new_blk);
 
+    void erase(BlockPtr<T> &new_blk);
+
     std::pair<size_t, VisualizationPointStorage<T>> map_points();
+
+    size_t get_voxel_map_size();
 
 public:
     int max_points_in_vox;

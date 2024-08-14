@@ -31,8 +31,9 @@ RunFunctions<T>::RunFunctions(bool use_config)
     }
     // base parameters
 
-    std::random_device rd;
-    std::mt19937 gen_2(rd());
+    // std::random_device rd;
+    // std::mt19937 gen_2(rd());
+    std::mt19937 gen_2(42);
     gen = gen_2;
 
     dis = std::uniform_real_distribution<T>(-tp.points_gen_range / 2.0, tp.points_gen_range / 2.0);
@@ -426,31 +427,59 @@ void RunFunctions<T>::testing_downsample_scheme()
 template <typename T>
 void RunFunctions<T>::testing_incremental()
 {
+    std::cout << "Incremental Insert and Knn Search Test: " << std::endl;
+    std::cout << "\nTesting Insertion of: " << tp.num_incremental_insert << " in each loop." << std::endl;
+    std::cout << "Total number of loops: " << tp.iterations_faster_lio_test << std::endl;
+    size_t total_size = tp.build_size + tp.num_incremental_insert * tp.iterations_faster_lio_test;
+    std::cout << "Expected Points [if no limits placed on the number of voxels]: " << total_size << std::endl;
+
     PointStoragePtr<T> node = std::make_shared<PointStorage<T>>(
         tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
         tp.track_stats, tp.init_map_size, tp.voxel_size);
 
-    auto points = create_random_points(100, tp.points_gen_range);
+    auto points = create_random_points(tp.build_size, tp.points_gen_range);
     point_storage_run(node, points);
 
+    T insert_dur = 0, knn_dur = 0;
     for (size_t iter = 0; iter < tp.iterations_faster_lio_test; ++iter)
     {
         points = create_random_points(tp.num_incremental_insert, tp.points_gen_range);
-        std::cout << "Total Created Points size: " << points.size() << std::endl;
-        node->insert(points);
+        {
+            auto start = std::chrono::high_resolution_clock::now();
+            node->insert(points);
+            auto end = std::chrono::high_resolution_clock::now();
 
+            std::chrono::duration<T> duration = end - start;
+            insert_dur += 1000 * duration.count();
+        }
         // testing range search
-
         Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
         points = create_random_points(5, tp.points_gen_range);
 
         // knn search stuff
-        T s_range = tp.points_gen_range;
-        auto res = node->knn_search(points, tp.num_nearest, s_range, SearchType::Point);
+        {
+            auto start = std::chrono::high_resolution_clock::now();
+            T s_range = tp.search_radius;
+            auto res = node->knn_search(points, tp.num_nearest, s_range, SearchType::Point);
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<T> duration = end - start;
+            knn_dur += 1000 * duration.count();
+
+            // if (tp.verbose)
+            // {
+            for (auto &result : res)
+                auto out = Searcher<T>::get_matched_points(result, true);
+            // }
+        }
     }
 
+    T avg_insert_dur = insert_dur / tp.iterations_faster_lio_test;
+    T avg_knn_dur = knn_dur / tp.iterations_faster_lio_test;
+    std::cout << "============================" << std::endl;
+    std::cout << "Average insert duration: " << avg_insert_dur << std::endl;
+    std::cout << "Average time for " << tp.points_gen_range << " knn search: " << avg_knn_dur << std::endl;
+
     std::cout << "End of algorithm" << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(5));
     node->print_tree();
 }
 
@@ -543,13 +572,25 @@ void RunFunctions<T>::testing_combined_delete()
     Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
 
     // deleting stuff
+    if (tp.verbose)
+    {
+        std::cout << "Pre delete Map" << std::endl;
+        node->print_tree();
+    }
 
-    std::cout << "Point we are deleting: " << Point3d<T>::eig_to_string(qp) << std::endl;
+    if (tp.delete_within)
+        std::cout << "Point we are deleting points within: " << Point3d<T>::eig_to_string(qp) << std::endl;
+    else
+        std::cout << "Point we are deleting points outside: " << Point3d<T>::eig_to_string(qp) << std::endl;
+
     std::cout << "Delete Radius: " << tp.delete_radius << std::endl;
     std::cout << "==================================" << std::endl;
 
     auto start = std::chrono::high_resolution_clock::now();
-    node->delete_within_points(qp, tp.delete_radius, DeleteType::Spherical);
+    if (tp.delete_within)
+        node->delete_within_points(qp, tp.delete_radius, DeleteType::Spherical);
+    else
+        node->delete_outside_points(qp, tp.delete_radius, DeleteType::Spherical);
     auto end = std::chrono::high_resolution_clock::now();
 
     std::chrono::duration<T> duration = end - start;

@@ -7,6 +7,8 @@
 #include <boost/thread/locks.hpp>
 #include <boost/thread/shared_mutex.hpp>
 #include <tbb/concurrent_vector.h>
+#include <tbb/concurrent_queue.h>
+#include <atomic>
 
 template <typename T>
 struct RunningStats
@@ -44,7 +46,8 @@ struct OperationBase
 {
     using Ptr = std::shared_ptr<OperationBase<T>>;
     OperationType type;
-    explicit OperationBase(OperationType op_type) : type(op_type) {}
+    bool valid = false;
+    explicit OperationBase(OperationType op_type, bool valid) : type(op_type), valid(valid) {}
     virtual ~OperationBase() = default;
 };
 template <typename T>
@@ -93,21 +96,20 @@ struct OperationLogger
     /*---- Tracks blocks operations to complete during the rebuilding process ---- */
     using Ptr = std::shared_ptr<OperationLogger<T>>;
     using OpPtr = std::pair<OperationType, OpBasePtr<T>>;
-    using S_Vec = tbb::concurrent_vector<OpPtr>;
-
-    void new_slot();
+    using S_Vec = tbb::concurrent_queue<OpPtr>;
 
     void log_insert(const RunningStats<T> &pth, const Eigen::Vector3i &n_block);
 
     void log_delete(const Eigen::Matrix<T, 3, 1> &point, T range, DeleteCondition cond, DeleteType del_type);
 
-    S_Vec get_operations();
+    // S_Vec get_operations();
+    OpPtr get_operations();
 
     size_t num_operations_left();
 
 private:
-    std::vector<S_Vec> ops;
-    boost::shared_mutex data;
+    std::atomic<int> ops_left{0};
+    S_Vec ops;
 };
 
 template <typename T>

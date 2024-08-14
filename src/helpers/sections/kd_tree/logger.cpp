@@ -59,7 +59,7 @@ template struct RunningStats<float>;
 // ........... OPERATIONS LOGGER STUFF ...........
 template <typename T>
 InsertOp<T>::InsertOp(const RunningStats<T> &pth, const Eigen::Vector3i &n_block)
-    : OperationBase<T>(OperationType::Insert),
+    : OperationBase<T>(OperationType::Insert, true),
       stats(pth.sum, pth.sum_sq, pth.count),
       vox_to_insert(n_block) {}
 
@@ -81,7 +81,7 @@ template struct InsertOp<float>;
 // ........... DELETE OPERATION STUFF ...........
 template <typename T>
 DeleteOp<T>::DeleteOp(const Eigen::Matrix<T, 3, 1> &point, T range, DeleteCondition cond, DeleteType del_type)
-    : OperationBase<T>(OperationType::Delete), point(point), cond(cond), del_type(del_type), range(range) {}
+    : OperationBase<T>(OperationType::Delete, true), point(point), cond(cond), del_type(del_type), range(range) {}
 
 template <typename T>
 typename DeleteOp<T>::Ptr DeleteOp<T>::cast(OpBasePtr<T> &op)
@@ -99,68 +99,39 @@ template struct DeleteOp<double>;
 template struct DeleteOp<float>;
 
 // ........... OPERATION STACKER STUFF ...........
-template <typename T>
-void OperationLogger<T>::new_slot()
-{
-    {
-        boost::shared_lock<boost::shared_mutex> lock(data);
-        if (!ops.empty())
-            return;
-    }
-
-    boost::unique_lock<boost::shared_mutex> lock(data);
-    if (ops.empty())
-        ops.emplace_back(S_Vec());
-}
 
 template <typename T>
 void OperationLogger<T>::log_insert(const RunningStats<T> &pth, const Eigen::Vector3i &n_block)
 {
-    new_slot();
-
-    boost::shared_lock<boost::shared_mutex> lock(data);
-    ops.front().emplace_back(OperationType::Insert, std::make_shared<InsertOp<T>>(pth, n_block));
+    ops.emplace(OperationType::Insert, std::make_shared<InsertOp<T>>(pth, n_block));
+    ++ops_left;
 }
 
 template <typename T>
 void OperationLogger<T>::log_delete(const Eigen::Matrix<T, 3, 1> &point, T range, DeleteCondition cond, DeleteType del_type)
 {
-    new_slot();
 
-    boost::shared_lock<boost::shared_mutex> lock(data);
-    ops.front().emplace_back(OperationType::Delete, std::make_shared<DeleteOp<T>>(point, range, cond, del_type));
+    ops.emplace(OperationType::Delete, std::make_shared<DeleteOp<T>>(point, range, cond, del_type));
+    ++ops_left;
 }
 
 template <typename T>
-typename OperationLogger<T>::S_Vec OperationLogger<T>::get_operations()
+typename OperationLogger<T>::OpPtr OperationLogger<T>::get_operations()
 {
-    boost::unique_lock<boost::shared_mutex> lock(data);
-    S_Vec out;
-    if (ops.empty())
-        return out;
-
+    OpPtr op;
+    if (ops.try_pop(op))
     {
-        std::vector<S_Vec> ops_temp = std::move(ops);
-        ops = std::vector<S_Vec>();
-        lock.unlock();
-
-        // ensure we clean house
-        for (auto &c_vec : ops_temp)
-        {
-            std::move(
-                std::make_move_iterator(c_vec.begin()),
-                std::make_move_iterator(c_vec.end()),
-                std::back_inserter(out));
-        }
+        --ops_left;
+        return op;
     }
 
-    return out;
+    return op;
 }
 
 template <typename T>
 size_t OperationLogger<T>::num_operations_left()
 {
-    return ops.size();
+    return ops_left.load(std::memory_order_relaxed);
 }
 
 template struct OperationLogger<double>;

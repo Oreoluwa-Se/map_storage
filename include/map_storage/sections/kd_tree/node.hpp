@@ -134,9 +134,9 @@ public:
     MinMaxHolder<T> get_min_max();
 
     // ....................... Logger Operations .......................
-    OperationLoggerPtr<T> get_logger();
+    OperationLoggerPtr<T> get_logger(bool create = false);
 
-    Ptr log_insert(const RunningStats<T> &pth, const Eigen::Vector3i &n_block);
+    void log_insert(const RunningStats<T> &pth, const Eigen::Vector3i &n_block);
 
     void log_delete(const Eigen::Matrix<T, 3, 1> &point, T range, DeleteCondition cond, DeleteType del_type);
 
@@ -146,9 +146,11 @@ public:
 
     bool cloned_status();
 
-    bool rebal_status();
+    void swap_locations(Ptr &comp_block, Ptr &to_swap);
 
     std::string bbox_info_to_string();
+
+    void voxel_increment_info_update(Ptr &new_block);
 
 public:
     OctreePtr<T> oct = nullptr;        // stores the points in current voxel
@@ -185,7 +187,7 @@ private:
 
     // lock
     mutable boost::shared_mutex axis_mutex, remap_mutex;
-    mutable boost::shared_mutex status_mutex, logger_mutex;
+    mutable boost::shared_mutex status_mutex, logger_mutex, swap_mutex;
     mutable boost::shared_mutex left_mutex, right_mutex, wconnect_mutex;
 };
 

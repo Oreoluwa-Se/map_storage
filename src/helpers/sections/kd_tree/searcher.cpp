@@ -47,9 +47,8 @@ void SearchRunner<T>::update_search_bucket(BlockPtr<T> &block, T sq_dist)
 template <typename T>
 void SearchRunner<T>::handle_distributive(BlockPtr<T> &block, T sq_dist)
 {
-    if (blocks.size() < num_nearest || sq_dist < max_range_sq)
+    if (sq_dist <= max_range_sq)
     {
-
         blocks.push({sq_dist, block});
         if (blocks.size() > num_nearest)
             blocks.pop();

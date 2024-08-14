@@ -30,6 +30,7 @@ void Inserter<T>::insert(Point3dPtrVect<T> &points, BlockPtrVecCC<T> &scapegoats
 template <typename T>
 void Inserter<T>::insert(Point3dPtrVectCC<T> &points, BlockPtrVecCC<T> &scapegoats)
 {
+
     if (points.empty())
         return;
 
@@ -50,40 +51,42 @@ template <typename T>
 void Inserter<T>::insertion_handler(BlockPtr<T> &start_point, BlockPtr<T> &to_insert, BlockPtrVecCC<T> &scapegoats)
 {
     BlockPtr<T> curr = start_point;
-    bool scapegoat_found = false;
+    bool scapegoat_found = false, swapped = false;
     RunningStats<T> r_stats;
 
     while (curr)
     {
-        if (curr->get_status() == NodeStatus::Rebalancing)
+        if (!swapped)
         {
-            // New tree version would handle rebalancing
-            scapegoat_found = true;
-
-            // new head refers to remap location
-            if (auto new_head = curr->log_insert(r_stats, to_insert->node_rep))
-                curr = new_head;
+            // essentially is remapping operation has occured we re-direct efforts
+            if (auto sp = curr->get_aux_connection(Connection::Remap))
+            {
+                curr = sp;
+                swapped = true;
+            }
         }
 
         // preparation for calculating new_axis
         r_stats.add_info(curr->node_rep_d);
 
-        // decide if we insert or move down the tree
+        // decides where we move to next and if we are a sca
         if (auto next_node = curr->insert_or_move(to_insert, r_stats))
         {
-            if (!scapegoat_found)
+            if (!scapegoat_found && curr->scapegoat_handler(config->imbal_factor, config->del_nodes_factor))
             {
-                if (curr->scapegoat_handler(config->imbal_factor, config->del_nodes_factor))
-                {
-                    scapegoat_found = true;
-                    scapegoats.push_back(curr);
-                }
+                scapegoats.push_back(curr);
+                scapegoat_found = true;
             }
 
+            // moving to next
             curr = next_node;
         }
         else
+        {
+            to_insert->set_aux_connection(curr, Connection::Parent);
+            to_insert->set_status(NodeStatus::Connected);
             break;
+        }
     }
 }
 
@@ -99,7 +102,11 @@ void Inserter<T>::insertion_cont(BlockPtr<T> &start_point, BlockPtr<T> &block, R
         if (auto next_move = curr->insert_or_move(block, r_stats))
             curr = next_move;
         else
+        {
+            block->set_aux_connection(curr, Connection::Parent);
+            block->set_status(NodeStatus::Connected);
             break;
+        }
     }
 }
 
