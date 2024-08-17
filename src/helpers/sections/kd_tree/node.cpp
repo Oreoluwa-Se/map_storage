@@ -427,25 +427,29 @@ typename Block<T>::Ptr Block<T>::insert_or_move(typename Block<T>::Ptr &new_bloc
     auto next_dir = go_left(new_block, c_stats) ? Connection::Left : Connection::Right;
     auto &cmtx = (next_dir == Connection::Left) ? left_mutex : right_mutex;
 
-    boost::upgrade_lock<boost::shared_mutex> lock(cmtx);
     {
-        auto &ptr = (next_dir == Connection::Left) ? left : right;
-        if (ptr)
+        boost::shared_lock<boost::shared_mutex> lock(cmtx);
         {
-            log_insert(c_stats, new_block->node_rep);
-            return ptr;
+            auto &ptr = (next_dir == Connection::Left) ? left : right;
+            if (ptr)
+            {
+                log_insert(c_stats, new_block->node_rep);
+                return ptr;
+            }
         }
     }
 
-    boost::upgrade_to_unique_lock<boost::shared_mutex> u_lock(lock);
+    boost::unique_lock<boost::shared_mutex> u_lock(cmtx);
     auto &ptr = (next_dir == Connection::Left) ? left : right;
     if (!ptr)
     {
         ptr = new_block;
+        u_lock.unlock();
         log_insert(c_stats, new_block->node_rep);
         return nullptr;
     }
 
+    u_lock.unlock();
     log_insert(c_stats, new_block->node_rep);
     return ptr;
 }

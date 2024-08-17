@@ -1,7 +1,7 @@
 #include "run.hpp"
 #include <string>
 #include "map_storage/utils/loader.hpp"
-
+#include <sys/resource.h>
 int main(int argc, char **argv)
 {
     // config file is relative to run directory.

@@ -36,117 +36,145 @@ int OctreeNode<T>::get_octant(const Point3dPtr<T> &point) const
 }
 
 template <typename T>
-size_t OctreeNode<T>::get_max_octant_count() const
-{
-    // gets the index of maximum element in the count array
-    auto max_it = std::max_element(octant_counts.begin(), octant_counts.end());
-    return *max_it;
-}
-
-template <typename T>
-void OctreeNode<T>::create_octant(const Eigen::Matrix<T, 3, 1> &center, const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, int octant)
+void OctreeNode<T>::create_child(const Eigen::Matrix<T, 3, 1> &center, const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, int loc)
 {
     Eigen::Matrix<T, 3, 1> new_min = min;
     Eigen::Matrix<T, 3, 1> new_max = max;
 
     // calculating new bounding box range
-    (octant & 1) ? new_min[0] = center[0] : new_max[0] = center[0];
-    (octant & 2) ? new_min[1] = center[1] : new_max[1] = center[1];
-    (octant & 4) ? new_min[2] = center[2] : new_max[2] = center[2];
+    (loc & 1) ? new_min[0] = center[0] : new_max[0] = center[0];
+    (loc & 2) ? new_min[1] = center[1] : new_max[1] = center[1];
+    (loc & 4) ? new_min[2] = center[2] : new_max[2] = center[2];
 
     // new child allocated with bounds set - don't track stats of children
-    children[octant] = std::make_shared<OctreeNode<T>>(new_min, new_max, max_points, false);
-    octant_counts[octant] = 0;
+    children[loc] = std::make_shared<OctreeNode<T>>(new_min, new_max, max_points, false);
 }
 
 template <typename T>
 void OctreeNode<T>::subdivide()
 {
-    Eigen::Matrix<T, 3, 1> center = bbox->center();
+    // establish midpoint, split and clear points from current
+    split_center = bbox->center();
     Eigen::Matrix<T, 3, 1> new_min = bbox->get_min();
     Eigen::Matrix<T, 3, 1> new_max = bbox->get_max();
 
-    // create new octants
-    size_t max_rep = get_max_octant_count();
-    for (size_t idx = 0; idx < octant_counts.size(); ++idx)
-    {
-        if (octant_counts[idx] == max_rep)
-            create_octant(center, new_min, new_max, idx);
-    }
+    create_child(split_center, new_min, new_max, 0);
+    children[0]->depth = (depth + 1) % 3;
 
-    Point3dPtrVect<T> reminants;
+    create_child(split_center, new_min, new_max, 1);
+    children[1]->depth = (depth + 1) % 3;
+
     for (const auto &point : points)
     {
-        int point_octant = get_octant(point);
-        if (!children[point_octant])
-            reminants.push_back(std::move(point));
+        if (move_left(point->point))
+            children[0]->include_point(point);
         else
-            children[point_octant]->include_point(point, point_octant);
+            children[1]->include_point(point);
     }
 
     // replace points with reminants
-    points = std::move(reminants);
+    points.clear();
 }
 
 template <typename T>
-void OctreeNode<T>::include_point(const Point3dPtr<T> &point, int octant)
+void OctreeNode<T>::include_point(const Point3dPtr<T> &point)
 {
     // add to new_points
     bbox->unsafe_min_max_update(point->point);
-    ++octant_counts[octant];
+    ++curr_size;
     points.push_back(point);
+}
+
+template <typename T>
+bool OctreeNode<T>::move_left(const Eigen::Matrix<T, 3, 1> &pt)
+{
+    // split_center is defined when we subdivide the vector
+    int axis = depth % 3;
+    return pt[axis] < split_center[axis];
 }
 
 template <typename T>
 void OctreeNode<T>::insert_point(const Point3dPtr<T> &point)
 {
-    bbox->update(point->point);
-    int octant = get_octant(point);
+    std::stack<typename OctreeNode<T>::Ptr> stack;
+    stack.push(this->shared_from_this());
+
+    while (!stack.empty())
     {
-        boost::shared_lock<boost::shared_mutex> lock_s(mutex);
-        if (children[octant])
+        auto curr_node = stack.top();
+        stack.pop();
+
+        curr_node->bbox->update(point->point);
         {
-            children[octant]->insert_point(point);
-            return;
+            boost::shared_lock<boost::shared_mutex> lock(curr_node->mutex);
+            if (!curr_node->is_leaf)
+            {
+                if (curr_node->move_left(point->point))
+                    stack.push(curr_node->children[0]);
+                else
+                    stack.push(curr_node->children[1]);
+
+                continue;
+            }
+
+            ++curr_node->curr_size;
+            curr_node->points.push_back(point);
+            if (curr_node->curr_size.load(std::memory_order_relaxed) < curr_node->max_points)
+                break; // inserted and we are done
         }
-    }
 
-    // at some point all octants would have been created and this wouldn't be needed
-    boost::unique_lock<boost::shared_mutex> lock(mutex);
-    if (children[octant]) // check again
-    {
-        children[octant]->insert_point(point);
-        return;
-    }
+        boost::unique_lock<boost::shared_mutex> lock(curr_node->mutex);
+        if (!curr_node->is_leaf)
+        {
+            if (curr_node->move_left(point->point))
+                stack.push(curr_node->children[0]);
+            else
+                stack.push(curr_node->children[1]);
+        }
 
-    // process of creating new octants
-    ++octant_counts[octant];
-    points.push_back(point);
-    if (points.size() > max_points)
-    {
-        subdivide();
-        is_leaf = false;
+        curr_node->is_leaf = false;
+        curr_node->subdivide();
+        if (curr_node->move_left(point->point))
+            stack.push(curr_node->children[0]);
+        else
+            stack.push(curr_node->children[1]);
     }
 }
 
 template <typename T>
 void OctreeNode<T>::unsafe_insert_point(const Point3dPtr<T> &point)
 {
-    int octant = get_octant(point);
-    bbox->unsafe_min_max_update(point->point);
-    if (children[octant])
-    {
-        children[octant]->unsafe_insert_point(point);
-        return;
-    }
+    std::stack<typename OctreeNode<T>::Ptr> stack;
+    stack.push(this->shared_from_this());
 
-    // at some point all octants would have been created and this wouldn't be needed
-    ++octant_counts[octant];
-    points.push_back(point);
-    if (points.size() > max_points)
+    while (!stack.empty())
     {
-        subdivide();
-        is_leaf = false;
+        auto curr_node = stack.top();
+        stack.pop();
+
+        curr_node->bbox->update(point->point);
+
+        if (!curr_node->is_leaf)
+        {
+            if (curr_node->move_left(point->point))
+                stack.push(curr_node->children[0]);
+            else
+                stack.push(curr_node->children[1]);
+
+            continue;
+        }
+
+        ++curr_node->curr_size;
+        curr_node->points.push_back(point);
+        if (curr_node->curr_size.load(std::memory_order_relaxed) < curr_node->max_points)
+            return;
+
+        curr_node->is_leaf = false;
+        curr_node->subdivide();
+        if (curr_node->move_left(point->point))
+            stack.push(curr_node->children[0]);
+        else
+            stack.push(curr_node->children[1]);
     }
 }
 
@@ -219,16 +247,16 @@ void OctreeNode<T>::handle_delete(DeleteManager<T> &to_del)
         if (!current_node->points.empty())
         {
             for (auto &point : current_node->points)
-                to_del.ptd.push_back(point->point);
+                to_del.ptd.push_back(std::move(point->point));
         }
 
-        if (current_node->is_leaf)
-            continue;
-
-        for (auto &child : current_node->children)
+        if (!current_node->is_leaf)
         {
-            if (child)
-                node_stack.push(std::move(child));
+            for (auto &child : current_node->children)
+            {
+                if (child)
+                    node_stack.push(std::move(child));
+            }
         }
 
         // delete everything current node
@@ -238,40 +266,57 @@ void OctreeNode<T>::handle_delete(DeleteManager<T> &to_del)
 }
 
 template <typename T>
-void OctreeNode<T>::range_delete(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type)
+bool OctreeNode<T>::skippable_del_node_ops(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type)
 {
-    // status check
     auto del_status = DeleteManager<T>::skip_criteria(cond, del_type, bbox, center, range);
     if (del_status == DeleteStatus::Skip)
     {
         to_del.update(bbox->get_min(), bbox->get_max());
-        return;
+        return true;
     }
 
-    AVector3TVec<T> ptd; // point collector
+    // this implies we can essentially remove everything from this section
     if (del_status == DeleteStatus::Collapse)
     {
         is_leaf = true;
-        for (const auto &point : points) // copy all current points
+        for (const auto &point : points)
             to_del.ptd.push_back(point->point);
 
         // take points from children
         handle_delete(to_del);
-        to_del.use_min_max = false;
         bbox->reset(false);
         points.clear();
 
-        return;
+        return true;
     }
 
-    // traverse points within blocks
-    T range_sq = range * range;
-    Point3dPtrVect<T> saved_points;
+    return false;
+}
+
+template <typename T>
+void OctreeNode<T>::top_down_update_bbox_info()
+{
+    Eigen::Matrix<T, 3, 1> min = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::max();
+    Eigen::Matrix<T, 3, 1> max = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::lowest();
+    for (auto &child : children)
+    {
+        min = min.cwiseMin(child->bbox->get_min());
+        max = max.cwiseMax(child->bbox->get_max());
+    }
+
+    bbox->min_max_update(min, max);
+    split_center = 0.5 * (min + max);
+}
+
+template <typename T>
+void OctreeNode<T>::leaf_vector_delete(AVector3TVec<T> &ptd, const Eigen::Matrix<T, 3, 1> &center, T range_sq, DeleteCondition cond)
+{
+    Point3dPtrVectCC<T> saved_points;
     bbox->reset(true);
 
-    Eigen::Matrix<T, 3, 1> min = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::max();
-    Eigen::Matrix<T, 3, 1> max = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::lowest();
-    // handling borderline scenario
+    Eigen::Matrix<T, 3, 1> min = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::max();
+    Eigen::Matrix<T, 3, 1> max = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::lowest();
+
     for (auto &point : points)
     {
         if (DeleteManager<T>::point_check(point->point, center, cond, range_sq))
@@ -281,81 +326,104 @@ void OctreeNode<T>::range_delete(DeleteManager<T> &to_del, const Eigen::Matrix<T
         }
         else
         {
-            // do this here to reduce bbox lock
             min = min.cwiseMin(point->point);
             max = max.cwiseMax(point->point);
             saved_points.push_back(std::move(point));
         }
     }
 
-    if (!saved_points.empty())
+    if (saved_points.empty())
     {
-        // Update delete manager and bounding box info.
-        bbox->min_max_update(min, max);
-        to_del.update(bbox->get_min(), bbox->get_max());
+        points.clear();
+        return;
     }
-    else
-        to_del.use_min_max = false;
 
-    // move points to delete
+    // outgoing
+    points = saved_points;
+    bbox->min_max_update(min, max);
+
+    // adjust mean cov values
     bbox->decrement(ptd);
-    points = std::move(saved_points);
-    std::move(ptd.begin(), ptd.end(), std::back_inserter(to_del.ptd));
-    delete_aggregation(to_del, center, range, cond, del_type);
 }
 
 template <typename T>
-void OctreeNode<T>::delete_aggregation(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type)
+void OctreeNode<T>::range_delete(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type)
 {
-    // Stack information from each valid child
-    std::vector<DeleteManager<T>> locals;
-    for (size_t idx = 0; idx < children.size(); ++idx)
+    using NodeMarkerPair = std::pair<typename OctreeNode<T>::Ptr, bool>;
+    std::stack<NodeMarkerPair> stack;
+    stack.push({this->shared_from_this(), false});
+
+    // traverse points within blocks
+    T range_sq = range * range;
+    Eigen::Matrix<T, 3, 1> min, max;
+
+    while (!stack.empty())
     {
-        if (children[idx])
+        auto s_info = stack.top();
+        auto curr_node = s_info.first;
+        bool visited = s_info.second;
+        stack.pop();
+
+        // here either we don't delete subtree or we remove the entire subtree
+        if (curr_node->skippable_del_node_ops(to_del, center, range, cond, del_type))
+            continue;
+
+        if (visited)
         {
-            locals.emplace_back();
-            children[idx]->range_delete(locals.back(), center, range, cond, del_type);
-            if (children[idx]->points.empty() && children[idx]->empty_children())
+            if (curr_node->is_leaf)
             {
-                children[idx].reset();
-                children[idx] = nullptr;
+                // mostly for intermediate cases and to update bbox information
+                AVector3TVec<T> ptd;
+                curr_node->leaf_vector_delete(ptd, center, range_sq, cond);
+                to_del.update(curr_node->bbox->get_min(), curr_node->bbox->get_max());
+
+                if (curr_node->points.empty())
+                    curr_node.reset(); // deallocation
+
+                std::move(ptd.begin(), ptd.end(), std::back_inserter(to_del.ptd));
+                continue;
+            }
+            // case where children are empty and current is empty remove it
+            else if (curr_node->empty_children())
+            {
+                curr_node.reset();
+                continue;
+            }
+            else
+            {
+                if (curr_node->children[1] && curr_node->children[0])
+                {
+                    // update current with left and right bboxes;
+                    curr_node->top_down_update_bbox_info();
+                    continue;
+                }
+
+                // Move up the valid child if only one child exists
+                auto valid_child = curr_node->children[1] ? curr_node->children[1] : curr_node->children[0];
+
+                curr_node->is_leaf = true;
+                curr_node->bbox = valid_child->bbox;
+                curr_node->points = valid_child->points;
+                curr_node->curr_size.store(curr_node->points.size());
+
+                // reset valid_child
+                valid_child.reset();
+            }
+        }
+        else
+        {
+            // push current and children
+            stack.push({curr_node, true});
+
+            if (!curr_node->is_leaf)
+            {
+                if (curr_node->children[1])
+                    stack.push({curr_node->children[1], false});
+                if (curr_node->children[0])
+                    stack.push({curr_node->children[0], false});
             }
         }
     }
-
-    if (empty_children())
-    {
-        is_leaf = true;
-        if (points.empty())
-            bbox->reset(false);
-    }
-
-    // update all required information - temp aggregate to reduce lock frequency
-    Eigen::Matrix<T, 3, 1> agg_min = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::max();
-    Eigen::Matrix<T, 3, 1> agg_max = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::lowest();
-    AVector3TVec<T> agg_ptd;
-    bool update_info = false;
-
-    for (auto &to_del_local : locals)
-    {
-        if (to_del_local.use_min_max && !is_leaf)
-        {
-            update_info = true;
-            agg_min = agg_min.cwiseMin(to_del_local.min);
-            agg_max = agg_max.cwiseMax(to_del_local.max);
-
-            to_del.update(to_del_local.min, to_del_local.max);
-        }
-
-        std::move(to_del_local.ptd.begin(), to_del_local.ptd.end(), std::back_inserter(agg_ptd));
-    }
-
-    if (update_info)
-    {
-        bbox->min_max_update(agg_min, agg_max);
-        bbox->decrement(agg_ptd);
-    }
-    std::move(agg_ptd.begin(), agg_ptd.end(), std::back_inserter(to_del.ptd));
 }
 
 template <typename T>
@@ -414,12 +482,8 @@ void OctreeNode<T>::search_algo(SearchHeap<T> &result, const Eigen::Matrix<T, 3,
 
         for (const auto &child : node->children)
         {
-            if (child)
-            {
-                T child_dist = child->bbox->closest_distance(qp);
-                if (result.size() < k || child_dist <= range_sq)
-                    explore_heap.emplace(child_dist, child);
-            }
+            if (child && BBox<T>::Status::Outside != child->bbox->point_within_bbox(qp, range))
+                explore_heap.emplace(child->bbox->closest_distance(qp), child);
         }
     }
 }
@@ -478,13 +542,13 @@ void OctreeNode<T>::gather_points(Point3dWPtrVecCC<T> &g_points)
         node_stack.pop();
 
         // copy into points folder
-        std::copy(
-            current_node->points.begin(),
-            current_node->points.end(),
-            std::back_inserter(g_points));
-
         if (current_node->is_leaf)
-            continue;
+        {
+            std::copy(
+                current_node->points.begin(),
+                current_node->points.end(),
+                std::back_inserter(g_points));
+        }
 
         for (auto &child : current_node->children)
         {

@@ -63,6 +63,7 @@ void Inserter<T>::insertion_handler(BlockPtr<T> &start_point, BlockPtr<T> &to_in
             {
                 curr = sp;
                 swapped = true;
+                scapegoat_found = true;
             }
         }
 

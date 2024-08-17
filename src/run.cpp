@@ -106,7 +106,7 @@ void RunFunctions<T>::point_storage_run(PointStoragePtr<T> &node, Point3dPtrVect
 
     if (tp.verbose)
     {
-        std::cout << "Insertion Execution time: " << 1000 * duration.count() << " milliseconds\n";
+        std::cout << "Build Execution time: " << 1000 * duration.count() << " milliseconds\n";
     }
 }
 
@@ -465,11 +465,11 @@ void RunFunctions<T>::testing_incremental()
             std::chrono::duration<T> duration = end - start;
             knn_dur += 1000 * duration.count();
 
-            // if (tp.verbose)
-            // {
-            for (auto &result : res)
-                auto out = Searcher<T>::get_matched_points(result, true);
-            // }
+            if (tp.verbose)
+            {
+                for (auto &result : res)
+                    auto out = Searcher<T>::get_matched_points(result, true);
+            }
         }
     }
 

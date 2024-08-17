@@ -1,7 +1,7 @@
 # Tree building and maintenance parameters
 Build:
-  max_points_in_vox: 30 # -1 means we don't limit the number
-  max_points_in_oct_layer: 30 # Maximum number of points stored in each level for an octant
+  max_points_in_vox: -1 # -1 means we don't limit the number
+  max_points_in_oct_layer: 100 # Maximum number of points stored in each level for an octant
   imbal_factor: 0.7 # Size discrepancy between left and right tree to trigger rebalancing
   del_nodes_factor: 0.5 # Maximum ratio between valid and invalid nodes before rebalancing
   track_stats: false # Track mean and covariance for each voxel. Mean is used during search, and covariance can be used as a validity check
@@ -9,18 +9,18 @@ Build:
   voxel_size: 1.0 # Total voxel size
 
 Testing:
-  points_gen_range: 10.0
-  delete_radius: 10.0
+  points_gen_range: 10
+  delete_radius: 5.0
   delete_within: false
-  search_radius: 5.0
+  search_radius: 0.3
   num_nearest: 5
-  build_size: 50000
-  verbose: true
+  build_size: 200000
+  verbose: false
   downsample_ratio: 0.5
 
   # Implemeted Tests for visualization
-  num_incremental_insert: 200
+  num_incremental_insert: 2000
   iterations_faster_lio_test: 10 # Number of iterations
-  testing_insert_search_run: false # Test insert and search for a number of iterations
+  testing_insert_search_run: true # Test insert and search for a number of iterations
   faster_lio_test: false # mimics the test found in faster_lio paper
-  basic_test: true # basic insert, search, downsample, retrival
+  basic_test: false # basic insert, search, downsample, retrival

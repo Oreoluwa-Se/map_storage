@@ -24,7 +24,7 @@ bool Octree<T>::can_insert_new_point()
     if (total_allowed_points == -1.0)
         return true;
 
-    return alt_size.load(std::memory_order_acquire) <= total_allowed_points;
+    return alt_size.load(std::memory_order_relaxed) <= total_allowed_points;
 }
 
 template <typename T>
@@ -33,36 +33,24 @@ void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
     if (!can_insert_new_point())
         return;
 
-    alt_size.fetch_add(1, std::memory_order_release);
+    alt_size.fetch_add(1, std::memory_order_relaxed);
+    bbox->update(point->point);
     {
         // if inserting just add it to list of nodes to insert
         boost::shared_lock<boost::shared_mutex> lock_s(mutexes[point->octant_key]);
-        if (inserting_t[point->octant_key])
+        if (roots[point->octant_key])
         {
-            to_flushs[point->octant_key].push_back(point);
+            roots[point->octant_key]->insert_point(point);
             return;
         }
     }
 
-    boost::unique_lock<boost::shared_mutex> lock(mutexes[point->octant_key]);
-    if (inserting_t[point->octant_key])
     {
-        to_flushs[point->octant_key].push_back(point);
-        return;
+        boost::unique_lock<boost::shared_mutex> lock(mutexes[point->octant_key]);
+        if (!roots[point->octant_key]) // create coordinate
+            roots[point->octant_key] = std::make_shared<OctreeNode<T>>(max_points, false);
     }
-
-    inserting_t[point->octant_key] = true;
-    lock.unlock();
-
-    if (!roots[point->octant_key]) // create coordinate
-        roots[point->octant_key] = std::make_shared<OctreeNode<T>>(max_points, false);
-
-    // insert
-    bbox->update(point->point);
     roots[point->octant_key]->insert_point(point);
-
-    lock.lock();
-    inserting_t[point->octant_key] = false;
 }
 
 template <typename T>

@@ -21,20 +21,20 @@ DeleteStatus DeleteManager<T>::skip_criteria(DeleteCondition cond, DeleteType ty
     if (cond == DeleteCondition::Inside)
     {
         if (oct_status == BBox<T>::Status::Outside)
-            return DeleteStatus::Skip;
+            return DeleteStatus::Collapse;
 
         if (oct_status == BBox<T>::Status::Inside)
-            return DeleteStatus::Collapse;
+            return DeleteStatus::Skip;
 
         return DeleteStatus::None;
     }
 
     // here we want to delete outside.. so reverse of above
     if (oct_status == BBox<T>::Status::Outside)
-        return DeleteStatus::Collapse;
+        return DeleteStatus::Skip;
 
     if (oct_status == BBox<T>::Status::Inside)
-        return DeleteStatus::Skip;
+        return DeleteStatus::Collapse;
 
     return DeleteStatus::None;
 }
@@ -46,20 +46,20 @@ DeleteStatus DeleteManager<T>::skip_criteria(DeleteCondition cond, DeleteType ty
     if (cond == DeleteCondition::Inside)
     {
         if (oct_status == BBox<T>::Status::Outside)
-            return DeleteStatus::Skip;
+            return DeleteStatus::Collapse;
 
         if (oct_status == BBox<T>::Status::Inside)
-            return DeleteStatus::Collapse;
+            return DeleteStatus::Skip;
 
         return DeleteStatus::None;
     }
 
     // here we want to delete outside.. so reverse of above
     if (oct_status == BBox<T>::Status::Outside)
-        return DeleteStatus::Collapse;
+        return DeleteStatus::Skip;
 
     if (oct_status == BBox<T>::Status::Inside)
-        return DeleteStatus::Skip;
+        return DeleteStatus::Collapse;
 
     return DeleteStatus::None;
 }

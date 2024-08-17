@@ -7,11 +7,13 @@
 #include <boost/thread/shared_mutex.hpp>
 #include <array>
 #include <memory>
+#include <atomic>
 
 template <typename T>
 class OctreeNode : public std::enable_shared_from_this<OctreeNode<T>>
 {
 public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     using Ptr = std::shared_ptr<OctreeNode<T>>;
 
     using SearchPair = std::pair<T, Ptr>;
@@ -45,13 +47,13 @@ public:
 private:
     void subdivide();
 
-    void create_octant(const Eigen::Matrix<T, 3, 1> &center, const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, int octant);
+    bool move_left(const Eigen::Matrix<T, 3, 1> &pt);
 
-    size_t get_max_octant_count() const;
+    void create_child(const Eigen::Matrix<T, 3, 1> &center, const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, int octant);
 
     void unsafe_insert_point(const Point3dPtr<T> &point);
 
-    void include_point(const Point3dPtr<T> &point, int octant);
+    void include_point(const Point3dPtr<T> &point);
 
     bool empty_children();
 
@@ -59,18 +61,24 @@ private:
 
     void range_delete(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type = DeleteType::Spherical);
 
-    void delete_aggregation(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type);
-
     void search_algo(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, size_t k);
+
+    bool skippable_del_node_ops(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type);
+
+    void top_down_update_bbox_info();
+
+    void leaf_vector_delete(AVector3TVec<T> &ptd, const Eigen::Matrix<T, 3, 1> &center, T range_sq, DeleteCondition cond);
 
 public:
     BBoxPtr<T> bbox = nullptr; // bounding box
-    std::array<Ptr, 8> children = {nullptr};
+    std::array<Ptr, 2> children = {nullptr};
     mutable boost::shared_mutex mutex;
 
 private:
-    std::array<size_t, 8> octant_counts = {0};
-    Point3dPtrVect<T> points;
+    Point3dPtrVectCC<T> points;
+    std::atomic<int> curr_size{0};
+    Eigen::Matrix<T, 3, 1> split_center;
+    int depth = 0;
     size_t max_points = 30;
     bool is_leaf;
 };
