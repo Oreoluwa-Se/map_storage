@@ -22,13 +22,7 @@ public:
 
     OctreeNode(const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, size_t max_points = 30, bool track_stats = false);
 
-    int get_octant(const Point3dPtr<T> &point) const;
-
     void insert_point(const Point3dPtr<T> &point);
-
-    void insert_points(const Point3dPtrVect<T> &point);
-
-    void insert_points(const Point3dPtrVectCC<T> &point);
 
     bool check_leaf();
 
@@ -51,15 +45,15 @@ private:
 
     void create_child(const Eigen::Matrix<T, 3, 1> &center, const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, int octant);
 
-    void unsafe_insert_point(const Point3dPtr<T> &point);
-
-    void include_point(const Point3dPtr<T> &point);
+    void include_point(Point3dPtr<T> &&point);
 
     bool empty_children();
 
     void handle_delete(DeleteManager<T> &to_del);
 
     void range_delete(DeleteManager<T> &to_del, const Eigen::Matrix<T, 3, 1> &center, T range, DeleteCondition cond, DeleteType del_type = DeleteType::Spherical);
+
+    void process_leaf_node(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, T &range_sq, size_t k);
 
     void search_algo(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, size_t k);
 

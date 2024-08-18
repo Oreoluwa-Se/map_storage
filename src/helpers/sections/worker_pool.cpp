@@ -12,19 +12,15 @@ bool Task::operator<(const Task &other) const
 }
 
 // ...... Building worker pool class. Helps to offload some work from the main thread ....
-WorkPool::WorkPool() : stop_flag(false), is_working(false), should_run(false) {}
+WorkPool::WorkPool() : stop_flag(false), is_working(false) { work_thread = std::thread(&WorkPool::run, this); }
 
 WorkPool::~WorkPool() { stop(); }
 
 void WorkPool::stop()
 {
     {
-        {
-            boost::unique_lock<boost::shared_mutex> lock(mutex);
-            stop_flag = true;
-        }
-
         std::unique_lock<std::mutex> lock(cv_mutex);
+        stop_flag = true;
         cv.notify_one();
     }
 
@@ -32,29 +28,9 @@ void WorkPool::stop()
         work_thread.join();
 }
 
-void WorkPool::start()
-{
-    {
-        boost::shared_lock<boost::shared_mutex> lock(mutex);
-        if (should_run)
-            return;
-    }
-
-    boost::unique_lock<boost::shared_mutex> lock(mutex);
-    if (should_run)
-        return;
-
-    should_run = true;
-    stop_flag = false;
-
-    // run the thread
-    work_thread = std::thread(&WorkPool::run, this);
-}
-
 void WorkPool::enqueue_task(TaskType type, std::function<void()> task, PriorityRank state)
 {
     task_q.emplace(type, std::move(task), state);
-    start();
     cv.notify_one();
 }
 
@@ -68,7 +44,6 @@ void WorkPool::run()
 {
     while (true)
     {
-        Task task_item;
         {
             std::unique_lock<std::mutex> lock(cv_mutex);
             cv.wait(
@@ -76,17 +51,16 @@ void WorkPool::run()
                 { return stop_flag || !task_q.empty(); });
 
             if (stop_flag && task_q.empty())
-            {
-                should_run = false;
                 return;
-            }
-
-            if (task_q.try_pop(task_item))
-                is_working = true;
         }
 
-        if (is_working)
+        Task task_item;
+        if (task_q.try_pop(task_item))
         {
+            boost::unique_lock<boost::shared_mutex> lock(mutex);
+            is_working = true;
+            lock.unlock();
+
             try
             {
                 // run the function
@@ -101,13 +75,10 @@ void WorkPool::run()
                 std::cerr << "Unknown exception in worker thread." << std::endl;
             }
 
-            // finalize run
-            {
-                boost::unique_lock<boost::shared_mutex> lock(mutex);
-                is_working = false;
-            }
-
-            cv.notify_one();
+            lock.lock();
+            is_working = false;
         }
+
+        cv.notify_one();
     }
 }

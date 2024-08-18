@@ -3,12 +3,12 @@
 template <typename T>
 Octree<T>::Octree(size_t max_points, bool track_stats, int total_allowed_points)
     : bbox(std::make_shared<BBox<T>>(track_stats)),
-      max_points(max_points), is_inserting(false), track_stats(track_stats), total_allowed_points(total_allowed_points) {}
+      max_points(max_points), track_stats(track_stats), total_allowed_points(total_allowed_points) {}
 
 template <typename T>
 Octree<T>::Octree(const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, size_t max_points, bool track_stats, int total_allowed_points)
     : bbox(std::make_shared<BBox<T>>(min, max, track_stats)),
-      max_points(max_points), is_inserting(false), track_stats(track_stats), total_allowed_points(total_allowed_points) {}
+      max_points(max_points), track_stats(track_stats), total_allowed_points(total_allowed_points) {}
 
 template <typename T>
 void Octree<T>::clear()
@@ -51,24 +51,6 @@ void Octree<T>::split_insert_point(const Point3dPtr<T> &point)
             roots[point->octant_key] = std::make_shared<OctreeNode<T>>(max_points, false);
     }
     roots[point->octant_key]->insert_point(point);
-}
-
-template <typename T>
-void Octree<T>::split_batch_insert()
-{
-    for (size_t idx = 0; idx < to_flushs.size(); ++idx)
-    {
-        if (!to_flushs[idx].empty())
-        {
-            bbox->update(to_flushs[idx]);
-            boost::unique_lock<boost::shared_mutex> lock_s(mutexes[idx]);
-            if (!roots[idx]) // create octree
-                roots[idx] = std::make_shared<OctreeNode<T>>(max_points, false);
-
-            roots[idx]->insert_points(to_flushs[idx]);
-            to_flushs[idx].clear();
-        }
-    }
 }
 
 template <typename T>

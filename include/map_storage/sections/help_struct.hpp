@@ -25,8 +25,8 @@ struct DeleteManager
 {
     // helps in managing delete process
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    Eigen::Matrix<T, 3, 1> min = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::max();
-    Eigen::Matrix<T, 3, 1> max = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::lowest();
+    Eigen::Matrix<T, 3, 1> min = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::max();
+    Eigen::Matrix<T, 3, 1> max = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::lowest();
     AVector3TVec<T> ptd;
     bool use_min_max = true;
 

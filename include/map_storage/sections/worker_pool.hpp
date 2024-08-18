@@ -61,8 +61,6 @@ private: // functions
 
     void run();
 
-    void start();
-
 private: // attributes
     tbb::concurrent_priority_queue<Task> task_q;
     std::thread work_thread;
@@ -71,7 +69,6 @@ private: // attributes
     std::condition_variable cv;
     bool stop_flag;
     bool is_working;
-    bool should_run;
 };
 
 using PoolPtr = typename WorkPool::Ptr;

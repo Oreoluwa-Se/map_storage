@@ -35,6 +35,7 @@ struct TestParams
     size_t iterations_faster_lio_test = 100;
     bool testing_isr = false;
     T downsample_ratio = 0.5;
+    int generated_search_points = 5;
 };
 
 // Creating the functions
@@ -48,17 +49,11 @@ struct RunFunctions
 
     void single_node_update_run(OctreeNodePtr<T> &node, const Point3dPtrVect<T> &points);
 
-    void single_node_update_run_parallel(OctreeNodePtr<T> &node, const Point3dPtrVect<T> &points);
-
-    void octree_ptr_run(OctreePtr<T> &node, const Point3dPtrVect<T> &points);
-
     void point_storage_run(PointStoragePtr<T> &node, Point3dPtrVect<T> &points);
 
     void testing_insert_schemes();
 
     OctreeNodePtr<T> create_and_insert_node();
-
-    OctreePtr<T> create_and_insert_tree();
 
     void testing_octree_delete();
 

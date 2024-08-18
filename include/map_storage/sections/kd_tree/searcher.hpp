@@ -29,6 +29,8 @@ struct SearchRunner
 
     void enqueue_next(ExplorePriorityType &next_block, BlockPtr<T> &curr);
 
+    bool enough_points();
+
 private:
     void enqueue_next_distributive(ExplorePriorityType &next_block, BlockPtr<T> &curr);
 

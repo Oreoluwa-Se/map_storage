@@ -34,9 +34,6 @@ void SearchRunner<T>::update_search_bucket(BlockPtr<T> &block, T sq_dist)
 {
     if (typ == SearchType::Distribution)
     {
-        if (block->oct->bbox->get_size() < 3)
-            return;
-
         handle_distributive(block, sq_dist);
         return;
     }
@@ -59,6 +56,15 @@ void SearchRunner<T>::handle_distributive(BlockPtr<T> &block, T sq_dist)
         max_range = std::sqrt(blocks.top().first);
         max_range_sq = blocks.top().first;
     }
+}
+
+template <typename T>
+bool SearchRunner<T>::enough_points()
+{
+    if (typ == SearchType::Distribution)
+        return num_nearest == blocks.size();
+
+    return num_nearest == points.size();
 }
 
 template <typename T>
@@ -107,17 +113,19 @@ void SearchRunner<T>::enqueue_next_point(ExplorePriorityType &next_block, BlockP
     if (curr->is_leaf(left_blk, right_blk))
         return;
 
-    for (auto &child : {left_blk, right_blk})
+    size_t axis = curr->get_axis();
+    bool left = curr->go_left(node_rep, axis);
+
+    auto near = left ? left_blk : right_blk;
+    if (near)
+        next_block.push({near->closest_distance(qp), near});
+
+    auto further = left ? right_blk : left_blk;
+    if (further)
     {
-        if (child)
-        {
-            if (not_visited(child->node_rep))
-            {
-                T child_dist = child->closest_distance(qp);
-                if (points.size() < num_nearest || child_dist <= max_range_sq)
-                    next_block.push({child_dist, child});
-            }
-        }
+        T child_dist = further->closest_distance(qp);
+        if (child_dist <= max_range_sq)
+            next_block.push({child_dist, further});
     }
 }
 

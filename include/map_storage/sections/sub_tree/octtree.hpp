@@ -20,8 +20,6 @@ public:
 
     void split_insert_point(const Point3dPtr<T> &point);
 
-    void split_batch_insert();
-
     void radius_search(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, size_t k);
 
     void range_search(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range);
@@ -45,13 +43,9 @@ private:
 
 private:
     size_t max_points;
-    bool is_inserting;
     bool track_stats;
     std::array<OctreeNodePtr<T>, 8> roots = {nullptr};
-    std::array<bool, 8> inserting_t = {false};
     std::array<boost::shared_mutex, 8> mutexes;
-    Point3dPtrVectCC<T> to_flush;
-    std::array<Point3dPtrVectCC<T>, 8> to_flushs;
     int total_allowed_points;
 };
 

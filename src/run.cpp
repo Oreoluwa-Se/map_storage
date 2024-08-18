@@ -28,11 +28,10 @@ RunFunctions<T>::RunFunctions(bool use_config)
         set_param(tp.iterations_faster_lio_test, test_params["iterations_faster_lio_test"]);
         set_param(tp.downsample_ratio, test_params["downsample_ratio"]);
         set_param(tp.testing_isr, test_params["testing_insert_search_run"]);
+        set_param(tp.generated_search_points, test_params["num_search_points"]);
     }
     // base parameters
 
-    // std::random_device rd;
-    // std::mt19937 gen_2(rd());
     std::mt19937 gen_2(42);
     gen = gen_2;
 
@@ -45,8 +44,6 @@ Point3dPtrVect<T> RunFunctions<T>::create_random_points(size_t num_points, T ran
 {
     Point3dPtrVect<T> points;
     points.reserve(num_points);
-
-    std::uniform_real_distribution<T> dis(-range / 2.0, range / 2.0);
 
     for (size_t i = 0; i < num_points; ++i)
     {
@@ -75,28 +72,6 @@ void RunFunctions<T>::single_node_update_run(OctreeNodePtr<T> &node, const Point
 }
 
 template <typename T>
-void RunFunctions<T>::single_node_update_run_parallel(OctreeNodePtr<T> &node, const Point3dPtrVect<T> &points)
-{
-    if (tp.verbose)
-        std::cout << points.size() << std::endl;
-    node->insert_points(points);
-}
-
-template <typename T>
-void RunFunctions<T>::octree_ptr_run(OctreePtr<T> &node, const Point3dPtrVect<T> &points)
-{
-    tbb::parallel_for(
-        tbb::blocked_range<size_t>(0, points.size()),
-        [&](const tbb::blocked_range<size_t> &r)
-        {
-            for (size_t i = r.begin(); i != r.end(); ++i)
-                node->split_insert_point(points[i]);
-        });
-
-    node->split_batch_insert();
-}
-
-template <typename T>
 void RunFunctions<T>::point_storage_run(PointStoragePtr<T> &node, Point3dPtrVect<T> &points)
 {
     auto start = std::chrono::high_resolution_clock::now();
@@ -116,7 +91,7 @@ OctreeNodePtr<T> RunFunctions<T>::create_and_insert_node()
     auto points = create_random_points(tp.build_size, tp.points_gen_range);
     OctreeNodePtr<T> node_stuff = std::make_shared<OctreeNode<T>>(tp.max_points_in_vox, tp.track_stats);
     std::cout << "Inserting Node" << std::endl;
-    measure_time(&RunFunctions<T>::single_node_update_run_parallel, this, node_stuff, points);
+    measure_time(&RunFunctions<T>::single_node_update_run, this, node_stuff, points);
     if (tp.verbose)
         std::cout << *(node_stuff->bbox) << std::endl;
 
@@ -139,14 +114,8 @@ void RunFunctions<T>::testing_insert_schemes()
     points = create_random_points(tp.build_size, tp.points_gen_range);
     OctreeNodePtr<T> node_stuff_1 = std::make_shared<OctreeNode<T>>(tp.max_points_in_vox, tp.track_stats);
     std::cout << "\nParallel thread run:" << std::endl;
-    measure_time(&RunFunctions<T>::single_node_update_run_parallel, this, node_stuff_1, points);
+    measure_time(&RunFunctions<T>::single_node_update_run, this, node_stuff_1, points);
     std::cout << *(node_stuff_1->bbox) << std::endl;
-
-    points = create_random_points(tp.build_size, tp.points_gen_range);
-    OctreePtr<T> node_stuff_3 = std::make_shared<Octree<T>>(tp.max_points_in_vox, tp.track_stats);
-    std::cout << "\nParallel thread + Flush operation" << std::endl;
-    measure_time(&RunFunctions<T>::octree_ptr_run, this, node_stuff_3, points);
-    std::cout << *(node_stuff_3->bbox) << std::endl;
 
     PointStoragePtr<T> ps = std::make_shared<PointStorage<T>>(
         tp.max_points_in_vox, tp.max_points_in_oct_layer, tp.imbal_factor, tp.del_nodes_factor,
@@ -162,25 +131,11 @@ void RunFunctions<T>::testing_insert_schemes()
 }
 
 template <typename T>
-OctreePtr<T> RunFunctions<T>::create_and_insert_tree()
-{
-    auto points = create_random_points(tp.build_size, tp.points_gen_range);
-    OctreePtr<T> node_stuff = std::make_shared<Octree<T>>(tp.max_points_in_vox, tp.track_stats);
-
-    std::cout << "Inserting tree" << std::endl;
-    measure_time(&RunFunctions<T>::octree_ptr_run, this, node_stuff, points);
-    if (tp.verbose)
-        std::cout << *(node_stuff->bbox) << std::endl;
-
-    return node_stuff;
-}
-
-template <typename T>
 void RunFunctions<T>::testing_octree_delete()
 {
     OctreeNodePtr<T> node = std::make_shared<OctreeNode<T>>(tp.max_points_in_vox, tp.track_stats);
     auto points = create_random_points(tp.build_size, tp.points_gen_range);
-    single_node_update_run_parallel(node, points);
+    single_node_update_run(node, points);
     if (tp.verbose)
         std::cout << *(node->bbox) << std::endl;
 
@@ -232,11 +187,7 @@ void RunFunctions<T>::testing_search()
     // instances of types
     OctreeNodePtr<T> node = std::make_shared<OctreeNode<T>>(tp.max_points_in_vox, tp.track_stats);
     {
-        measure_time(&RunFunctions<T>::single_node_update_run_parallel, this, node, points);
-    }
-    OctreePtr<T> tree = std::make_shared<Octree<T>>(tp.max_points_in_vox, tp.track_stats);
-    {
-        measure_time(&RunFunctions<T>::octree_ptr_run, this, tree, points);
+        measure_time(&RunFunctions<T>::single_node_update_run, this, node, points);
     }
 
     PointStoragePtr<T> ps = std::make_shared<PointStorage<T>>(
@@ -249,8 +200,7 @@ void RunFunctions<T>::testing_search()
     std::cout << "Number of points to search from: " << tp.build_size << std::endl;
     std::cout << "============================\n";
     tp.verbose = prev_verb;
-    std::uniform_real_distribution<T>
-        dis(-tp.points_gen_range / 2.0, tp.points_gen_range / 2.0);
+
     Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
     {
         std::cout << " Basic Octree Trial Radius search:" << std::endl;
@@ -259,21 +209,6 @@ void RunFunctions<T>::testing_search()
 
         auto start = std::chrono::high_resolution_clock::now();
         node->radius_search(result, qp, search_range, tp.num_nearest);
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<T> duration = end - start;
-
-        std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
-        auto res = OctreeNode<T>::get_matched(result, qp, tp.verbose);
-        std::cout << "Final size: " << res.size() << std::endl;
-    }
-
-    {
-        std::cout << "Cardinal Tree Radius search:" << std::endl;
-        T search_range = tp.search_radius;
-        SearchHeap<T> result;
-
-        auto start = std::chrono::high_resolution_clock::now();
-        tree->radius_search(result, qp, search_range, tp.num_nearest);
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<T> duration = end - start;
 
@@ -305,21 +240,6 @@ void RunFunctions<T>::testing_search()
         auto end = std::chrono::high_resolution_clock::now();
 
         std::chrono::duration<T> duration = end - start;
-        std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
-        auto res = OctreeNode<T>::get_matched(result, qp, tp.verbose);
-        std::cout << "Final size: " << res.size() << std::endl;
-    }
-
-    {
-        std::cout << "Cardinal Tree Range search:" << std::endl;
-        T search_range = tp.search_radius;
-        SearchHeap<T> result;
-
-        auto start = std::chrono::high_resolution_clock::now();
-        tree->range_search(result, qp, search_range);
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<T> duration = end - start;
-
         std::cout << "Execution time: " << 1000 * duration.count() << " milliseconds\n";
         auto res = OctreeNode<T>::get_matched(result, qp, tp.verbose);
         std::cout << "Final size: " << res.size() << std::endl;
@@ -454,7 +374,7 @@ void RunFunctions<T>::testing_incremental()
         }
         // testing range search
         Eigen::Matrix<T, 3, 1> qp(dis(gen), dis(gen), dis(gen));
-        points = create_random_points(5, tp.points_gen_range);
+        points = create_random_points(tp.generated_search_points, tp.points_gen_range);
 
         // knn search stuff
         {
@@ -477,7 +397,7 @@ void RunFunctions<T>::testing_incremental()
     T avg_knn_dur = knn_dur / tp.iterations_faster_lio_test;
     std::cout << "============================" << std::endl;
     std::cout << "Average insert duration: " << avg_insert_dur << std::endl;
-    std::cout << "Average time for " << tp.points_gen_range << " knn search: " << avg_knn_dur << std::endl;
+    std::cout << "Average time for " << tp.generated_search_points << " knn search: " << avg_knn_dur << std::endl;
 
     std::cout << "End of algorithm" << std::endl;
     node->print_tree();

@@ -3,8 +3,8 @@
 
 template <typename T>
 BBox<T>::BBox(bool _track_cov)
-    : min(Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::max()),
-      max(Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::lowest()),
+    : min(Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::max()),
+      max(Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::lowest()),
       mean(Eigen::Matrix<T, 3, 1>::Zero()),
       cov(Eigen::Matrix<T, 3, 3>::Identity() * std::numeric_limits<T>::max()),
       num_points(0), track_cov(_track_cov) {}
@@ -333,8 +333,8 @@ void BBox<T>::reset(bool min_max_only)
 template <typename T>
 void BBox<T>::unsafe_reset(bool min_max_only)
 {
-    min = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::max();
-    max = Eigen::Matrix<T, 3, 1>::Identity() * std::numeric_limits<T>::lowest();
+    min = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::max();
+    max = Eigen::Matrix<T, 3, 1>::Ones() * std::numeric_limits<T>::lowest();
     if (!min_max_only)
     {
         num_points = 0;

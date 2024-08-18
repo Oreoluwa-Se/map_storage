@@ -20,22 +20,6 @@ OctreeNode<T>::OctreeNode(
       bbox(std::make_shared<BBox<T>>(min, max, track_stats)) {}
 
 template <typename T>
-int OctreeNode<T>::get_octant(const Point3dPtr<T> &point) const
-{
-    int octant = 0;
-    Eigen::Matrix<T, 3, 1> center = bbox->center();
-
-    if (point->x() >= center.x())
-        octant |= 1;
-    if (point->y() >= center.y())
-        octant |= 2;
-    if (point->z() >= center.z())
-        octant |= 4;
-
-    return octant;
-}
-
-template <typename T>
 void OctreeNode<T>::create_child(const Eigen::Matrix<T, 3, 1> &center, const Eigen::Matrix<T, 3, 1> &min, const Eigen::Matrix<T, 3, 1> &max, int loc)
 {
     Eigen::Matrix<T, 3, 1> new_min = min;
@@ -48,6 +32,7 @@ void OctreeNode<T>::create_child(const Eigen::Matrix<T, 3, 1> &center, const Eig
 
     // new child allocated with bounds set - don't track stats of children
     children[loc] = std::make_shared<OctreeNode<T>>(new_min, new_max, max_points, false);
+    children[loc]->depth = (depth + 1) % 3;
 }
 
 template <typename T>
@@ -59,17 +44,14 @@ void OctreeNode<T>::subdivide()
     Eigen::Matrix<T, 3, 1> new_max = bbox->get_max();
 
     create_child(split_center, new_min, new_max, 0);
-    children[0]->depth = (depth + 1) % 3;
-
     create_child(split_center, new_min, new_max, 1);
-    children[1]->depth = (depth + 1) % 3;
 
-    for (const auto &point : points)
+    for (auto &point : points)
     {
         if (move_left(point->point))
-            children[0]->include_point(point);
+            children[0]->include_point(std::move(point));
         else
-            children[1]->include_point(point);
+            children[1]->include_point(std::move(point));
     }
 
     // replace points with reminants
@@ -77,12 +59,12 @@ void OctreeNode<T>::subdivide()
 }
 
 template <typename T>
-void OctreeNode<T>::include_point(const Point3dPtr<T> &point)
+void OctreeNode<T>::include_point(Point3dPtr<T> &&point)
 {
     // add to new_points
     bbox->unsafe_min_max_update(point->point);
     ++curr_size;
-    points.push_back(point);
+    points.push_back(std::move(point));
 }
 
 template <typename T>
@@ -139,59 +121,6 @@ void OctreeNode<T>::insert_point(const Point3dPtr<T> &point)
         else
             stack.push(curr_node->children[1]);
     }
-}
-
-template <typename T>
-void OctreeNode<T>::unsafe_insert_point(const Point3dPtr<T> &point)
-{
-    std::stack<typename OctreeNode<T>::Ptr> stack;
-    stack.push(this->shared_from_this());
-
-    while (!stack.empty())
-    {
-        auto curr_node = stack.top();
-        stack.pop();
-
-        curr_node->bbox->update(point->point);
-
-        if (!curr_node->is_leaf)
-        {
-            if (curr_node->move_left(point->point))
-                stack.push(curr_node->children[0]);
-            else
-                stack.push(curr_node->children[1]);
-
-            continue;
-        }
-
-        ++curr_node->curr_size;
-        curr_node->points.push_back(point);
-        if (curr_node->curr_size.load(std::memory_order_relaxed) < curr_node->max_points)
-            return;
-
-        curr_node->is_leaf = false;
-        curr_node->subdivide();
-        if (curr_node->move_left(point->point))
-            stack.push(curr_node->children[0]);
-        else
-            stack.push(curr_node->children[1]);
-    }
-}
-
-template <typename T>
-void OctreeNode<T>::insert_points(const Point3dPtrVectCC<T> &g_points)
-{
-    boost::unique_lock<boost::shared_mutex> lock(mutex);
-    for (const auto &point : g_points)
-        unsafe_insert_point(point);
-}
-
-template <typename T>
-void OctreeNode<T>::insert_points(const Point3dPtrVect<T> &g_points)
-{
-    boost::unique_lock<boost::shared_mutex> lock(mutex);
-    for (const auto &point : g_points)
-        unsafe_insert_point(point);
 }
 
 template <typename T>
@@ -442,17 +371,41 @@ void OctreeNode<T>::range_search(SearchHeap<T> &result, const Eigen::Matrix<T, 3
 }
 
 template <typename T>
+void OctreeNode<T>::process_leaf_node(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, T &range_sq, size_t k)
+{
+    for (const auto &point : points)
+    {
+        T p_dist = (qp - point->point).squaredNorm();
+        if (p_dist <= range_sq)
+        {
+            if (result.size() < k || p_dist < result.top().first)
+            {
+                result.emplace(p_dist, point->point);
+                if (result.size() > k)
+                    result.pop();
+            }
+        }
+    }
+
+    if (result.size() == k && result.top().first < range_sq)
+    {
+        range = std::sqrt(result.top().first);
+        range_sq = range * range;
+    }
+}
+
+template <typename T>
 void OctreeNode<T>::search_algo(SearchHeap<T> &result, const Eigen::Matrix<T, 3, 1> &qp, T &range, size_t k)
 {
     std::priority_queue<SearchPair, std::vector<SearchPair>, std::greater<>> explore_heap;
     explore_heap.emplace(0.0, this->shared_from_this());
-    boost::shared_lock<boost::shared_mutex> lock(mutex);
 
     T range_sq = range * range;
+
+    boost::shared_lock<boost::shared_mutex> lock(mutex);
     while (!explore_heap.empty())
     {
         auto top = explore_heap.top();
-        T dist = top.first;
         auto node = top.second;
         explore_heap.pop();
 
@@ -460,30 +413,26 @@ void OctreeNode<T>::search_algo(SearchHeap<T> &result, const Eigen::Matrix<T, 3,
         if (BBox<T>::Status::Outside == node->bbox->point_within_bbox(qp, range))
             continue;
 
-        for (const auto &point : node->points)
+        if (node->check_leaf())
         {
-            T p_dist = (qp - point->point).squaredNorm();
-            if (p_dist <= range_sq)
-            {
-                if (result.size() < k || p_dist < result.top().first)
-                {
-                    result.emplace(p_dist, point->point);
-                    if (result.size() > k)
-                        result.pop();
-                }
-            }
+            node->process_leaf_node(result, qp, range, range_sq, k);
+            continue;
         }
 
-        if (result.size() == k && result.top().first < range_sq)
+        // finding next search
+        bool left_check = move_left(qp);
+        auto near = left_check ? node->children[0] : node->children[1];
+        if (near)
         {
-            range = std::sqrt(result.top().first);
-            range_sq = range * range;
+            auto nd = near->bbox->closest_distance(qp);
+            explore_heap.emplace(near->bbox->closest_distance(qp), near);
         }
 
-        for (const auto &child : node->children)
+        auto further = left_check ? node->children[1] : node->children[0];
+        if (further)
         {
-            if (child && BBox<T>::Status::Outside != child->bbox->point_within_bbox(qp, range))
-                explore_heap.emplace(child->bbox->closest_distance(qp), child);
+            if (BBox<T>::Status::Outside != further->bbox->point_within_bbox(qp, range))
+                explore_heap.emplace(further->bbox->closest_distance(qp), further);
         }
     }
 }
@@ -532,7 +481,6 @@ AVector3TVec<T> OctreeNode<T>::get_matched(SearchHeap<T> &result, const Eigen::M
 template <typename T>
 void OctreeNode<T>::gather_points(Point3dWPtrVecCC<T> &g_points)
 {
-    boost::shared_lock<boost::shared_mutex> lock(mutex);
     std::stack<OctreeNode<T>::Ptr> node_stack;
     node_stack.push(this->shared_from_this());
 
@@ -542,8 +490,9 @@ void OctreeNode<T>::gather_points(Point3dWPtrVecCC<T> &g_points)
         node_stack.pop();
 
         // copy into points folder
-        if (current_node->is_leaf)
+        if (current_node->check_leaf())
         {
+            boost::shared_lock<boost::shared_mutex> lock(current_node->mutex);
             std::copy(
                 current_node->points.begin(),
                 current_node->points.end(),
